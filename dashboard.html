@@ -4,291 +4,647 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WealthOS Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <style>
-  :root {
-    --bg:      #0d1117;
-    --card-bg: #161b22;
-    --border:  #30363d;
-    --text:    #e6edf3;
-    --muted:   #8b949e;
-    --pos:     #3fb950;
-    --neg:     #f85149;
-    --accent:  #58a6ff;
-  }
-  * { box-sizing: border-box; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; margin: 0; padding: 0; }
-  a { color: var(--accent); }
+:root {
+  --bg:       #0a0e1a;
+  --card:     #111827;
+  --card2:    #1a2235;
+  --border:   #1f2d45;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --pos:      #34d399;
+  --neg:      #f87171;
+  --accent:   #60a5fa;
+  --gold:     #fbbf24;
+  --radius:   10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif; font-size: 14px; line-height: 1.5; }
 
-  /* Header */
-  .site-header { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; }
-  .site-header h1 { margin: 0; font-size: 1.25rem; font-weight: 600; letter-spacing: .5px; }
-  .site-header .ts { color: var(--muted); font-size: .85rem; }
+/* ── Top bar ── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,14,26,0.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 28px; display: flex; align-items: center; gap: 24px;
+}
+.topbar-logo { font-weight: 800; font-size: 1rem; letter-spacing: .5px; color: var(--accent); }
+.topbar-pnl { font-size: .85rem; }
+.topbar-ts { margin-left: auto; color: var(--muted); font-size: .78rem; }
 
-  /* Regime banner */
-  .regime-banner { padding: 12px 24px; font-size: .9rem; border-bottom: 1px solid var(--border); display: flex; gap: 24px; align-items: center; }
-  .regime-label { font-weight: 700; font-size: 1.05rem; padding: 2px 12px; border-radius: 4px; }
-  .regime-stat { color: var(--muted); }
-  .regime-stat b { color: var(--text); }
+/* ── Regime banner ── */
+.regime {
+  padding: 10px 28px; font-size: .85rem;
+  display: flex; gap: 20px; align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.regime-pill {
+  font-weight: 700; font-size: .82rem;
+  padding: 3px 12px; border-radius: 99px;
+  letter-spacing: .5px;
+}
+.regime-stat { color: var(--muted); }
+.regime-stat b { color: var(--text); }
 
-  /* Main layout */
-  .main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+/* ── Layout ── */
+.main { padding: 20px 28px 60px; max-width: 1700px; margin: 0 auto; }
 
-  /* KPI cards */
-  .kpi-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; }
-  .kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; min-width: 160px; flex: 1; }
-  .kpi-label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
-  .kpi-value { font-size: 1.4rem; font-weight: 700; }
-  .kpi-sub { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+/* ── Action card ── */
+.action-card {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #334155; border-radius: var(--radius);
+  padding: 16px 22px; margin-bottom: 18px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.action-title { font-weight: 700; font-size: .9rem; white-space: nowrap; color: var(--gold); }
+.action-body  { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.action-item  { display: flex; gap: 8px; align-items: center; font-size: .85rem; }
+.action-none  { color: var(--pos); font-size: .85rem; }
 
-  /* Sections */
-  .section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-  .section-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); color: var(--accent); }
+/* ── KPI cards ── */
+.kpi-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.kpi-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px; flex: 1; min-width: 140px;
+  position: relative; overflow: hidden;
+}
+.kpi-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(96,165,250,.04) 0%, transparent 60%);
+}
+.kpi-icon  { font-size: 1rem; margin-bottom: 4px; display: block; }
+.kpi-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .9px; margin-bottom: 4px; }
+.kpi-value { font-size: 1.3rem; font-weight: 700; }
+.kpi-sub   { font-size: .75rem; color: var(--muted); margin-top: 3px; }
 
-  /* Tables */
-  .data-table { width: 100%; border-collapse: collapse; font-size: .85rem; overflow-x: auto; display: block; white-space: nowrap; }
-  .data-table th { background: #21262d; color: var(--muted); font-weight: 500; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: .78rem; text-transform: uppercase; }
-  .data-table td { padding: 8px 12px; border-bottom: 1px solid #21262d; }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: rgba(88,166,255,0.04); }
+/* ── Sections ── */
+.section {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 22px; margin-bottom: 18px;
+}
+.section-title {
+  font-size: .9rem; font-weight: 700; color: var(--accent);
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.section-sub {
+  font-size: .78rem; color: var(--muted); font-weight: 400;
+}
+.sub-heading {
+  font-size: .72rem; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .8px; margin: 18px 0 8px;
+}
 
-  /* Colors */
-  .pos { color: var(--pos); }
-  .neg { color: var(--neg); }
-  .empty { color: var(--muted); font-style: italic; padding: 12px 0; }
+/* ── Charts ── */
+.charts-row { display: flex; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.chart-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px; flex: 1; min-width: 280px;
+}
+.chart-title { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 12px; }
 
-  /* Charts */
-  .charts-row { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
-  .chart-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; flex: 1; min-width: 300px; }
-  .chart-title { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 12px; }
+/* ── Tables ── */
+.table-wrap { overflow-x: auto; }
+.data-table {
+  width: 100%; border-collapse: collapse; font-size: .82rem;
+  white-space: nowrap;
+}
+.data-table th {
+  background: #0d1828; color: var(--muted); font-weight: 500;
+  padding: 8px 12px; text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .5px;
+}
+.data-table td { padding: 9px 12px; border-bottom: 1px solid #151e2e; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: rgba(96,165,250,.04); }
 
-  /* Divider between open/closed in NiftyShop */
-  .sub-heading { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin: 16px 0 8px; }
+/* ── Utility ── */
+.pos    { color: var(--pos); }
+.neg    { color: var(--neg); }
+.muted  { color: var(--muted); }
+.fw     { font-weight: 700; }
+.center { text-align: center; }
+.empty  { color: var(--muted); font-style: italic; padding: 10px 0; font-size: .85rem; }
+.sym    { font-weight: 700; letter-spacing: .3px; }
 
-  @media (max-width: 768px) {
-    .charts-row { flex-direction: column; }
-    .kpi-card { min-width: 140px; }
-  }
+/* ── Badges ── */
+.badge {
+  display: inline-block; padding: 2px 9px; border-radius: 99px;
+  font-size: .7rem; font-weight: 700; letter-spacing: .5px;
+  white-space: nowrap;
+}
+.bg-sell  { background: rgba(239,68,68,.18);  color: #f87171; border: 1px solid rgba(239,68,68,.3); }
+.bg-avg   { background: rgba(251,191,36,.15); color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
+.bg-atcap { background: rgba(100,116,139,.15);color: #94a3b8; border: 1px solid rgba(100,116,139,.3); }
+.bg-hold  { background: rgba(52,211,153,.1);  color: #6ee7b7; border: 1px solid rgba(52,211,153,.2); }
+
+/* ── Progress bar ── */
+.prog-wrap {
+  height: 5px; background: #1e293b; border-radius: 99px;
+  overflow: hidden; margin-bottom: 3px; width: 80px;
+}
+.prog-bar {
+  height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, #3b82f6, #22c55e);
+  transition: width .3s;
+}
+
+/* ── Heatmap ── */
+.heatmap {
+  display: flex; flex-wrap: wrap; gap: 7px; padding-top: 8px;
+}
+.hm-cell {
+  border-radius: 7px; padding: 8px 10px; min-width: 72px;
+  text-align: center; cursor: default; transition: transform .15s;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.hm-cell:hover { transform: scale(1.05); z-index: 2; }
+.hm-sym  { font-weight: 700; font-size: .78rem; letter-spacing: .3px; }
+.hm-pct  { font-size: .82rem; font-weight: 700; margin-top: 2px; }
+.hm-icon { font-size: .65rem; margin-top: 3px; opacity: .8; }
+.hm-legend {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.hm-leg {
+  font-size: .68rem; padding: 2px 8px; border-radius: 99px;
+  font-weight: 600; letter-spacing: .3px;
+}
+
+/* ── Alpha card ── */
+.alpha-stats { display: flex; flex-direction: column; gap: 7px; padding: 4px 0; }
+.alpha-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: .85rem; padding: 5px 10px;
+  background: rgba(255,255,255,.03); border-radius: 6px;
+}
+.alpha-row span:last-child { font-weight: 700; }
+.alpha-big { background: rgba(255,255,255,.06) !important; font-size: .95rem; }
+.alpha-since { font-size: .72rem; color: var(--muted); text-align: right; margin-top: 2px; }
+
+@media (max-width: 768px) {
+  .charts-row { flex-direction: column; }
+  .kpi-card   { min-width: 130px; }
+  .topbar     { flex-wrap: wrap; gap: 10px; }
+}
 </style>
 </head>
 <body>
 
-<div class="site-header">
-  <h1>WealthOS Portfolio Dashboard</h1>
-  <span class="ts">Generated 29 May 2026  16:46</span>
+<div class="topbar">
+  <span class="topbar-logo">⚡ WealthOS</span>
+  <span class="topbar-pnl">
+    Total deployed <b>₹0.7L</b>
+    &nbsp;·&nbsp;
+    Overall P&L <b style="color:#ef4444">-₹5,484 (-7.5%)</b>
+  </span>
+  <span class="topbar-ts">⟳ Generated 30 May 2026  00:24</span>
 </div>
 
-<div class="regime-banner" style="background:rgba(239,68,68,0.08)">
-  <span class="regime-label" style="background:#ef444420;color:#ef4444">
+<div class="regime" style="background:rgba(239,68,68,0.06)">
+  <span class="regime-pill" style="background:#ef444422;color:#ef4444;border:1px solid #ef444444">
     BEAR
   </span>
-  <span class="regime-stat">NIFTY <b>₹23,548</b></span>
-  <span class="regime-stat">vs 200DMA <b style="color:var(--neg)">-5.7%</b></span>
-  <span class="regime-stat">50-200DMA gap <b>-5.2%</b></span>
+  <span class="regime-stat">NIFTY <b>₹23,907</b></span>
+  <span class="regime-stat">vs 200DMA <b style="color:var(--neg)">-4.3%</b></span>
+  <span class="regime-stat">50-200 gap <b>-5.2%</b></span>
   <span class="regime-stat" style="color:#ef4444">CONFIRMED</span>
 </div>
 
 <div class="main">
 
-  <!-- ── Portfolio Summary ── -->
+  
+    <div class="action-card">
+      <div class="action-title">📋  This Week's Signals</div>
+      <div class="action-body"><div class="action-item"><span class="badge bg-avg">AVG ↓</span> <b>KOTAKBANK</b> @ ₹388.70 <span class="muted">(-7.0% · Nifty 50 Shop)</span></div><div class="action-item"><span class="badge bg-avg">AVG ↓</span> <b>DABUR</b> @ ₹445.45 <span class="muted">(-7.3% · Nifty 50 Shop)</span></div><div class="action-item"><span class="badge bg-avg">AVG ↓</span> <b>TRENT</b> @ ₹4,248.60 <span class="muted">(-9.1% · Nifty 50 Shop)</span></div><div class="action-item"><span class="badge bg-avg">AVG ↓</span> <b>HINDUNILVR</b> @ ₹2,198.40 <span class="muted">(-11.7% · Nifty 50 Shop)</span></div><div class="action-item"><span class="badge bg-avg">AVG ↓</span> <b>TCS</b> @ ₹2,284.20 <span class="muted">(-21.3% · Nifty 50 Shop)</span></div></div>
+    </div>
+
+  <!-- Portfolio Summary -->
   <div class="section">
     <div class="section-title">Portfolio Summary</div>
     <div class="kpi-row">
       
     <div class='kpi-card'>
+      <span class="kpi-icon">💼</span>
       <div class='kpi-label'>Total Deployed</div>
-      <div class='kpi-value' >₹0</div>
+      <div class='kpi-value' >₹73,440</div>
       
     </div>
       
     <div class='kpi-card'>
+      <span class="kpi-icon">📊</span>
       <div class='kpi-label'>Current Value</div>
-      <div class='kpi-value' >₹0</div>
+      <div class='kpi-value' >₹65,920</div>
       
     </div>
       
     <div class='kpi-card'>
+      <span class="kpi-icon">📈</span>
       <div class='kpi-label'>Unrealized P&L</div>
-      <div class='kpi-value' style="color:#22c55e">₹0</div>
-      <div class='kpi-sub'>+0.00%</div>
+      <div class='kpi-value' style="color:#ef4444">-₹7,520</div>
+      <div class='kpi-sub'>-10.24%</div>
     </div>
       
     <div class='kpi-card'>
+      <span class="kpi-icon">✅</span>
       <div class='kpi-label'>Realized P&L</div>
-      <div class='kpi-value' style="color:#22c55e">₹0</div>
+      <div class='kpi-value' style="color:#22c55e">₹2,036</div>
       <div class='kpi-sub'>NiftyShop closed trades</div>
     </div>
       
     <div class='kpi-card'>
+      <span class="kpi-icon">⭐</span>
       <div class='kpi-label'>Overall P&L</div>
-      <div class='kpi-value' style="color:#22c55e">₹0</div>
-      <div class='kpi-sub'>+0.00% of deployed</div>
+      <div class='kpi-value' style="color:#ef4444">-₹5,484</div>
+      <div class='kpi-sub'>-7.47% on capital deployed</div>
     </div>
     </div>
   </div>
 
-  <!-- ── Charts ── -->
+  <!-- Insights row -->
   <div class="charts-row">
-    <div class="chart-card" style="max-width:320px">
+    <div class="chart-card" style="max-width:260px">
       <div class="chart-title">Allocation by Strategy</div>
-      <canvas id="allocChart" height="240"></canvas>
+      <canvas id="allocChart" height="200"></canvas>
     </div>
-    <div class="chart-card">
-      <div class="chart-title">Unrealized P&amp;L by Position</div>
-      <canvas id="pnlChart" height="240"></canvas>
+    <div class="chart-card" style="max-width:320px">
+      <div class="chart-title">Portfolio vs Nifty 50 &nbsp;<span style="color:var(--muted);font-size:.7rem">(since first buy)</span></div>
+      
+        <div class="alpha-stats">
+          <div class="alpha-row"><span>Portfolio</span>
+            <span style="color:#ef4444">-10.2%</span></div>
+          <div class="alpha-row"><span>Nifty 50</span>
+            <span>-4.0%</span></div>
+          <div class="alpha-row alpha-big"><span>Alpha</span>
+            <span style="color:#ef4444">-6.3pp</span></div>
+          <div class="alpha-since">Since 03 Oct 25 &nbsp;·&nbsp; 239 days</div>
+        </div>
+      <canvas id="benchChart" height="130" style="margin-top:10px"></canvas>
+    </div>
+    <div class="chart-card" style="flex:2">
+      <div class="chart-title">Position Heatmap &nbsp;<span style="color:var(--muted);font-size:.7rem">hover for details · 🔵 N50Mom · 🟣 MidMom · 🟢 NSop50 · 🟡 NSmid</span></div>
+      <div class="hm-legend"><span class="hm-leg" style="background:#166534;color:#86efac">>+6%</span><span class="hm-leg" style="background:#1a3d22;color:#a7f3d0">+2–6%</span><span class="hm-leg" style="background:#1e2e1e;color:#6ee7b7">0–2%</span><span class="hm-leg" style="background:#3b1e1e;color:#fca5a5">-4–0%</span><span class="hm-leg" style="background:#7f1d1d;color:#fca5a5"><-8%</span></div><div class="heatmap"><div class="hm-cell" style="background:#3b1e1e;color:#fca5a5" title="ULTRACEMCO · -1.9% · ₹231 loss"><div class="hm-sym">ULTRACEMCO</div><div class="hm-pct">-1.9%</div><div class="hm-icon">🟢</div></div><div class="hm-cell" style="background:#7f1d1d;color:#fca5a5" title="KOTAKBANK · -7.0% · ₹732 loss"><div class="hm-sym">KOTAKBANK</div><div class="hm-pct">-7.0%</div><div class="hm-icon">🟢</div></div><div class="hm-cell" style="background:#7f1d1d;color:#fca5a5" title="DABUR · -7.3% · ₹735 loss"><div class="hm-sym">DABUR</div><div class="hm-pct">-7.3%</div><div class="hm-icon">🟢</div></div><div class="hm-cell" style="background:#991b1b;color:#fef2f2" title="TRENT · -9.1% · ₹1,282 loss"><div class="hm-sym">TRENT</div><div class="hm-pct">-9.1%</div><div class="hm-icon">🟢</div></div><div class="hm-cell" style="background:#991b1b;color:#fef2f2" title="HINDUNILVR · -11.7% · ₹1,456 loss"><div class="hm-sym">HINDUNILVR</div><div class="hm-pct">-11.7%</div><div class="hm-icon">🟢</div></div><div class="hm-cell" style="background:#450a0a;color:#ff8080" title="TCS · -21.3% · ₹3,084 loss"><div class="hm-sym">TCS</div><div class="hm-pct">-21.3%</div><div class="hm-icon">🟢</div></div></div>
     </div>
   </div>
 
-  <!-- ── Nifty 50 Momentum ── -->
+  <!-- Nifty 50 Momentum -->
   <div class="section">
-    <div class="section-title">Nifty 50 Momentum  <small style="color:var(--muted);font-weight:400">(monthly · ₹9L sleeve)</small></div>
+    <div class="section-title">
+      🔵 Nifty 50 Momentum
+      <span class="section-sub">monthly rebalance · ₹9L sleeve · 15 positions</span>
+    </div>
     <div class='kpi-row'>
     <div class='kpi-card'>
+      <span class="kpi-icon">💼</span>
       <div class='kpi-label'>Deployed</div>
       <div class='kpi-value' >₹0</div>
       
     </div>
     <div class='kpi-card'>
+      <span class="kpi-icon">📊</span>
       <div class='kpi-label'>Current Value</div>
       <div class='kpi-value' >₹0</div>
       
     </div>
     <div class='kpi-card'>
+      <span class="kpi-icon">📈</span>
       <div class='kpi-label'>Unrealized P&L</div>
       <div class='kpi-value' style="color:#22c55e">₹0</div>
       <div class='kpi-sub'>+0.00%</div>
     </div></div>
-    <p class='empty'>No Nifty 50 holdings found.</p>
+    <p class='empty'>No holdings found. Create current_holdings.txt to track momentum positions.</p>
   </div>
 
-  <!-- ── Midcap 50 Momentum ── -->
+  <!-- Midcap 50 Momentum -->
   <div class="section">
-    <div class="section-title">Midcap 50 Momentum  <small style="color:var(--muted);font-weight:400">(monthly · ₹2L sleeve)</small></div>
+    <div class="section-title">
+      🟣 Midcap 50 Momentum
+      <span class="section-sub">monthly rebalance · ₹2L sleeve · 10 positions · paper trade phase</span>
+    </div>
     <div class='kpi-row'>
     <div class='kpi-card'>
+      <span class="kpi-icon">💼</span>
       <div class='kpi-label'>Deployed</div>
       <div class='kpi-value' >₹0</div>
       
     </div>
     <div class='kpi-card'>
+      <span class="kpi-icon">📊</span>
       <div class='kpi-label'>Current Value</div>
       <div class='kpi-value' >₹0</div>
       
     </div>
     <div class='kpi-card'>
+      <span class="kpi-icon">📈</span>
       <div class='kpi-label'>Unrealized P&L</div>
       <div class='kpi-value' style="color:#22c55e">₹0</div>
       <div class='kpi-sub'>+0.00%</div>
     </div></div>
-    <p class='empty'>No Midcap holdings found.</p>
+    <p class='empty'>No holdings found. Create current_holdings.txt to track momentum positions.</p>
   </div>
 
-  <!-- ── NiftyShop ── -->
+  <!-- NiftyShop -->
   <div class="section">
-    <div class="section-title">NiftyShop  <small style="color:var(--muted);font-weight:400">(weekly · ₹4L · mean-reversion)</small></div>
+    <div class="section-title">
+      🟢 NiftyShop — Nifty 50
+      <span class="section-sub">weekly · ₹4L · mean-reversion · exit at +8%</span>
+    </div>
     <div class='kpi-row'>
     <div class='kpi-card'>
+      <span class="kpi-icon">💼</span>
+      <div class='kpi-label'>Deployed</div>
+      <div class='kpi-value' >₹73,440</div>
+      
+    </div>
+    <div class='kpi-card'>
+      <span class="kpi-icon">📊</span>
+      <div class='kpi-label'>Current Value</div>
+      <div class='kpi-value' >₹65,920</div>
+      
+    </div>
+    <div class='kpi-card'>
+      <span class="kpi-icon">📉</span>
+      <div class='kpi-label'>Unrealized P&L</div>
+      <div class='kpi-value' style="color:#ef4444">-₹7,520</div>
+      <div class='kpi-sub'>-10.24%</div>
+    </div>
+    <div class='kpi-card'>
+      <span class="kpi-icon">✅</span>
+      <div class='kpi-label'>Realized P&L</div>
+      <div class='kpi-value' style="color:#22c55e">₹2,036</div>
+      <div class='kpi-sub'>2/2 wins</div>
+    </div>
+    <div class='kpi-card'>
+      <span class="kpi-icon">🎯</span>
+      <div class='kpi-label'>Win Rate</div>
+      <div class='kpi-value' >100.0%</div>
+      
+    </div>
+    <div class='kpi-card'>
+      <span class="kpi-icon">⚡</span>
+      <div class='kpi-label'>Avg Return</div>
+      <div class='kpi-value' >+9.64%</div>
+      
+    </div>
+    <div class='kpi-card'>
+      <span class="kpi-icon">⏱</span>
+      <div class='kpi-label'>Avg Hold</div>
+      <div class='kpi-value' >99d</div>
+      
+    </div></div>
+    <div class="sub-heading">Open Positions</div>
+    
+    <div class="table-wrap">
+    <table class='data-table'>
+      <thead><tr>
+        <th>Symbol</th><th>Entry</th><th>Days</th><th>Lots</th>
+        <th>Avg ₹</th><th>Last Buy</th><th>CMP ₹</th><th>Qty</th>
+        <th>Deployed</th><th>P&amp;L ₹</th><th>P&amp;L%</th><th>To Exit</th><th>Signal</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="sym">ULTRACEMCO</span></td>
+          <td class="muted">28 Oct 25</td>
+          <td class="muted">214</td>
+          <td class="center">1</td>
+          <td>₹11,920.00</td>
+          <td class="muted">₹11,920.00</td>
+          <td class="neg">₹11,689.00</td>
+          <td>1</td>
+          <td>₹11,920</td>
+          <td class='neg'>-₹231</td>
+          <td class='neg fw'>-1.9%</td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar" style="width:90.8%"></div>
+            </div>
+            <span class="muted" style="font-size:.75rem">-9.2% to exit</span>
+          </td>
+          <td><span class="badge bg-hold">HOLD</span></td>
+        </tr>
+        <tr>
+          <td><span class="sym">KOTAKBANK</span></td>
+          <td class="muted">07 Nov 25</td>
+          <td class="muted">204</td>
+          <td class="center">1</td>
+          <td>₹418.00</td>
+          <td class="muted">₹418.00</td>
+          <td class="neg">₹388.70</td>
+          <td>25</td>
+          <td>₹10,450</td>
+          <td class='neg'>-₹732</td>
+          <td class='neg fw'>-7.0%</td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar" style="width:86.1%"></div>
+            </div>
+            <span class="muted" style="font-size:.75rem">-13.9% to exit</span>
+          </td>
+          <td><span class="badge bg-avg">AVG ↓</span></td>
+        </tr>
+        <tr>
+          <td><span class="sym">DABUR</span></td>
+          <td class="muted">08 Oct 25</td>
+          <td class="muted">234</td>
+          <td class="center">1</td>
+          <td>₹480.00</td>
+          <td class="muted">₹480.00</td>
+          <td class="neg">₹445.45</td>
+          <td>21</td>
+          <td>₹10,089</td>
+          <td class='neg'>-₹735</td>
+          <td class='neg fw'>-7.3%</td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar" style="width:85.9%"></div>
+            </div>
+            <span class="muted" style="font-size:.75rem">-14.1% to exit</span>
+          </td>
+          <td><span class="badge bg-avg">AVG ↓</span></td>
+        </tr>
+        <tr>
+          <td><span class="sym">TRENT</span></td>
+          <td class="muted">09 Oct 25</td>
+          <td class="muted">233</td>
+          <td class="center">1</td>
+          <td>₹4,676.00</td>
+          <td class="muted">₹4,676.00</td>
+          <td class="neg">₹4,248.60</td>
+          <td>3</td>
+          <td>₹14,028</td>
+          <td class='neg'>-₹1,282</td>
+          <td class='neg fw'>-9.1%</td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar" style="width:84.1%"></div>
+            </div>
+            <span class="muted" style="font-size:.75rem">-15.9% to exit</span>
+          </td>
+          <td><span class="badge bg-avg">AVG ↓</span></td>
+        </tr>
+        <tr>
+          <td><span class="sym">HINDUNILVR</span></td>
+          <td class="muted">29 Oct 25</td>
+          <td class="muted">213</td>
+          <td class="center">1</td>
+          <td>₹2,490.00</td>
+          <td class="muted">₹2,490.00</td>
+          <td class="neg">₹2,198.40</td>
+          <td>5</td>
+          <td>₹12,448</td>
+          <td class='neg'>-₹1,456</td>
+          <td class='neg fw'>-11.7%</td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar" style="width:81.7%"></div>
+            </div>
+            <span class="muted" style="font-size:.75rem">-18.3% to exit</span>
+          </td>
+          <td><span class="badge bg-avg">AVG ↓</span></td>
+        </tr>
+        <tr>
+          <td><span class="sym">TCS</span></td>
+          <td class="muted">03 Oct 25</td>
+          <td class="muted">239</td>
+          <td class="center">1</td>
+          <td>₹2,901.00</td>
+          <td class="muted">₹2,901.00</td>
+          <td class="neg">₹2,284.20</td>
+          <td>5</td>
+          <td>₹14,505</td>
+          <td class='neg'>-₹3,084</td>
+          <td class='neg fw'>-21.3%</td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar" style="width:72.9%"></div>
+            </div>
+            <span class="muted" style="font-size:.75rem">-27.1% to exit</span>
+          </td>
+          <td><span class="badge bg-avg">AVG ↓</span></td>
+        </tr></tbody>
+    </table></div>
+    <div class="sub-heading" style="margin-top:22px">Closed Trades</div>
+    
+    <div class="table-wrap">
+    <table class='data-table'>
+      <thead><tr>
+        <th>Symbol</th><th>Entry</th><th>Exit</th><th>Days</th><th>Lots</th>
+        <th>Invested</th><th>Proceeds</th><th>P&amp;L ₹</th><th>P&amp;L%</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="sym">ASIANPAINT</span></td>
+          <td class="muted">03 Feb 26</td>
+          <td class="muted">29 May 26</td>
+          <td class="muted center">115</td>
+          <td class="center">1</td>
+          <td>₹9,712</td>
+          <td>₹10,680</td>
+          <td class='pos'>₹968</td>
+          <td class='pos fw'>+10.0%</td>
+        </tr>
+        <tr>
+          <td><span class="sym">INFY</span></td>
+          <td class="muted">09 Sep 25</td>
+          <td class="muted">01 Dec 25</td>
+          <td class="muted center">83</td>
+          <td class="center">1</td>
+          <td>₹11,464</td>
+          <td>₹12,532</td>
+          <td class='pos'>₹1,068</td>
+          <td class='pos fw'>+9.3%</td>
+        </tr></tbody>
+    </table></div>
+  </div>
+
+  <!-- MidcapShop -->
+  <div class="section">
+    <div class="section-title">
+      🟡 MidcapShop — Midcap 50
+      <span class="section-sub">weekly · ₹2L · mean-reversion · paper trade phase</span>
+    </div>
+    <div class='kpi-row'>
+    <div class='kpi-card'>
+      <span class="kpi-icon">💼</span>
       <div class='kpi-label'>Deployed</div>
       <div class='kpi-value' >₹0</div>
       
     </div>
     <div class='kpi-card'>
+      <span class="kpi-icon">📊</span>
       <div class='kpi-label'>Current Value</div>
       <div class='kpi-value' >₹0</div>
       
     </div>
     <div class='kpi-card'>
+      <span class="kpi-icon">📈</span>
       <div class='kpi-label'>Unrealized P&L</div>
       <div class='kpi-value' style="color:#22c55e">₹0</div>
       <div class='kpi-sub'>+0.00%</div>
     </div></div>
     <div class="sub-heading">Open Positions</div>
     <p class='empty'>No open positions.</p>
-    <div class="sub-heading" style="margin-top:24px">Closed Trades</div>
+    <div class="sub-heading" style="margin-top:22px">Closed Trades</div>
     <p class='empty'>No closed trades yet.</p>
   </div>
 
-  <!-- ── MidcapShop ── -->
-  <div class="section">
-    <div class="section-title">MidcapShop  <small style="color:var(--muted);font-weight:400">(weekly · ₹2L · mean-reversion)</small></div>
-    <div class='kpi-row'>
-    <div class='kpi-card'>
-      <div class='kpi-label'>Deployed</div>
-      <div class='kpi-value' >₹0</div>
-      
-    </div>
-    <div class='kpi-card'>
-      <div class='kpi-label'>Current Value</div>
-      <div class='kpi-value' >₹0</div>
-      
-    </div>
-    <div class='kpi-card'>
-      <div class='kpi-label'>Unrealized P&L</div>
-      <div class='kpi-value' style="color:#22c55e">₹0</div>
-      <div class='kpi-sub'>+0.00%</div>
-    </div></div>
-    <div class="sub-heading">Open Positions</div>
-    <p class='empty'>No open positions.</p>
-    <div class="sub-heading" style="margin-top:24px">Closed Trades</div>
-    <p class='empty'>No closed trades yet.</p>
-  </div>
-
-</div><!-- /main -->
+</div>
 
 <script>
-// Allocation pie
+const darkTick = { color: '#64748b', font: { size: 10 } };
+const darkGrid = { color: '#1f2d45' };
+
 new Chart(document.getElementById('allocChart'), {
   type: 'doughnut',
   data: {
-    labels: ["Nifty50 Momentum", "Midcap Momentum", "NiftyShop N50", "MidcapShop"],
+    labels: ["N50 Momentum", "Midcap Mom.", "NiftyShop N50", "MidcapShop"],
     datasets: [{
-      data: [0, 0, 0, 0],
+      data: [0, 0, 73440.0, 0],
       backgroundColor: ['#3b82f6','#8b5cf6','#22c55e','#f59e0b'],
-      borderWidth: 0,
+      borderWidth: 2, borderColor: '#0a0e1a',
+      hoverBorderColor: '#fff',
     }]
   },
   options: {
     plugins: {
-      legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } },
-      tooltip: {
-        callbacks: {
-          label: ctx => ' ₹' + (ctx.raw/1e5).toFixed(2) + 'L  (' +
-            Math.round(ctx.raw / 1 * 100) + '%)'
-        }
-      }
+      legend: { position:'bottom', labels:{ color:'#94a3b8', font:{size:11}, padding:14 } },
+      tooltip: { callbacks: { label: ctx => ' ₹' + (ctx.raw/1e5).toFixed(2) + 'L  (' + Math.round(ctx.raw/73440.0*100) + '%)' } }
     },
-    cutout: '60%',
+    cutout: '64%',
   }
 });
 
-// P&L bar
-new Chart(document.getElementById('pnlChart'), {
-  type: 'bar',
+
+new Chart(document.getElementById('benchChart'), {
+  type: 'line',
   data: {
-    labels: [],
-    datasets: [{
-      label: 'Unrealized P&L ₹',
-      data: [],
-      backgroundColor: [],
-      borderRadius: 3,
-    }]
+    labels: Array.from({length:35}, (_,i) => i),
+    datasets: [
+      {
+        label: 'Portfolio',
+        data: [-0.0, -0.3, -0.6, -0.9, -1.2, -1.51, -1.81, -2.11, -2.41, -2.71, -3.01, -3.31, -3.61, -3.92, -4.22, -4.52, -4.82, -5.12, -5.42, -5.72, -6.02, -6.32, -6.63, -6.93, -7.23, -7.53, -7.83, -8.13, -8.43, -8.73, -9.04, -9.34, -9.64, -9.94, -10.24],
+        borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,.1)',
+        borderWidth: 2, pointRadius: 0, fill: true, tension: .4,
+      },
+      {
+        label: 'Nifty 50',
+        data: [0.0, 1.57, 3.28, 3.62, 3.33, 2.4, 4.08, 4.72, 5.26, 5.19, 4.63, 4.31, 4.61, 5.76, 3.17, 3.21, 0.62, 1.71, 3.21, 2.32, 2.72, 1.14, -1.78, -7.0, -7.15, -8.33, -8.76, -3.39, -2.17, -4.0, -3.6, -2.88, -5.02, -4.72, -3.97],
+        borderColor: '#f59e0b', backgroundColor: 'transparent',
+        borderWidth: 1.5, pointRadius: 0, tension: .4,
+        borderDash: [5,3],
+      }
+    ]
   },
   options: {
-    indexAxis: 'x',
     plugins: {
-      legend: { display: false },
-      tooltip: {
-        callbacks: {
-          label: ctx => ' ₹' + ctx.raw.toLocaleString('en-IN', {maximumFractionDigits:0})
-        }
-      }
+      legend: { position:'bottom', labels:{ color:'#94a3b8', font:{size:10}, padding:10 } },
+      tooltip: { callbacks: { label: ctx => ' ' + ctx.raw.toFixed(1) + '%' } }
     },
     scales: {
-      x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
-      y: { ticks: { color: '#8b949e', font: { size: 10 },
-              callback: v => '₹' + (v/1000).toFixed(0) + 'K' },
-           grid: { color: '#21262d' } },
+      x: { display: false },
+      y: { ticks: { ...darkTick, callback: v => v.toFixed(0)+'%' }, grid: darkGrid },
     }
   }
 });

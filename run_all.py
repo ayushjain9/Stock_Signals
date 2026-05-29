@@ -102,8 +102,13 @@ def main() -> None:
         print(f"  {name:<25}  {status}")
     print(f"\n  Completed in {elapsed}s  —  {datetime.now().strftime('%H:%M:%S')}")
 
-    if any(not v for v in results.values()):
-        print("\n  One or more deployers failed. Check output above.")
+    # Auto-regenerate dashboard
+    _section("DASHBOARD")
+    dash_ok = _run("dashboard.py", ["--open"] if not a.dry_run else [])
+    print(f"  Dashboard: {'dashboard.html written + opened in browser' if dash_ok else 'FAILED'}")
+
+    if any(not v for v in results.values()) or not dash_ok:
+        print("\n  One or more steps failed. Check output above.")
         sys.exit(1)
 
 

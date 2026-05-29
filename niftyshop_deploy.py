@@ -294,6 +294,43 @@ def fetch_prices() -> dict[str, dict]:
     result["__filtered__"] = filtered   # type: ignore[assignment]
     return result
 
+
+def fetch_current_prices(symbols: list[str]) -> dict[str, float]:
+    """Fetch latest close for any symbols — no DMA filter. Used for portfolio holdings."""
+    import yfinance as yf
+    if not symbols:
+        return {}
+    tickers = [f"{s}.NS" for s in symbols]
+    raw = yf.download(tickers, period="5d", progress=False,
+                      auto_adjust=True, threads=True)
+    if raw.empty:
+        return {}
+    close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw
+    result: dict[str, float] = {}
+    for sym in symbols:
+        col = sym + ".NS"
+        if col in close.columns:
+            s = close[col].dropna()
+            if len(s) > 0:
+                result[sym] = round(float(s.iloc[-1]), 2)
+    return result
+
+
+def _inject_portfolio_prices(portfolio: dict, mkt: dict) -> None:
+    """Add current prices for holdings not captured by the DMA filter."""
+    missing = [s for s in portfolio if s not in mkt]
+    if not missing:
+        return
+    live = fetch_current_prices(missing)
+    for sym, price in live.items():
+        mkt[sym] = {
+            "name":      NIFTY50.get(sym, sym),
+            "price":     price,
+            "dma20":     0.0,
+            "deviation": 0.0,
+            "above200":  None,   # unknown — not fetched
+        }
+
 # ── Signal ────────────────────────────────────────────────────────────────────
 def generate_signal(cfg: Config) -> None:
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -315,6 +352,9 @@ def generate_signal(cfg: Config) -> None:
     mkt_raw  = fetch_prices()
     filtered = mkt_raw.pop("__filtered__", {})   # remove meta key
     mkt      = {k: v for k, v in mkt_raw.items() if not k.startswith("__")}
+
+    # Ensure portfolio holdings always have a live price (they may be above 20DMA)
+    _inject_portfolio_prices(portfolio, mkt)
 
     if not mkt:
         print("  ❌ Could not fetch prices. Check internet.")
@@ -485,50 +525,116 @@ def generate_signal(cfg: Config) -> None:
 
 def _print_portfolio(portfolio: dict[str, Position],
                      mkt: dict[str, dict], cfg: Config) -> None:
-    print()
-    _header("CURRENT PORTFOLIO")
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich import box
+    from rich.text import Text
+
+    console = Console()
+
+    console.print()
     if not portfolio:
-        print("  No open positions.\n")
+        console.print(Panel("[dim]No open positions.[/dim]", title="CURRENT PORTFOLIO", border_style="dim"))
         return
 
-    print(f"\n  {'Symbol':<13} {'Invested':>10} {'Lots':>5} {'Avg ₹':>9}"
-          f" {'Cur ₹':>9} {'P&L%':>7} {'to exit':>9} {'P&L ₹':>9}")
-    print(f"  {'─'*12} {'─'*10} {'─'*5} {'─'*9} {'─'*9} {'─'*7} {'─'*9} {'─'*9}")
+    table = Table(
+        box=box.ROUNDED,
+        border_style="blue",
+        header_style="bold white on dark_blue",
+        show_footer=True,
+        footer_style="bold",
+        title=f"[bold cyan]CURRENT PORTFOLIO[/bold cyan]  —  "
+              f"[white]{len(portfolio)} position{'s' if len(portfolio)>1 else ''}[/white]  │  "
+              f"[dim]{datetime.now().strftime('%d %b %Y  %H:%M')}[/dim]",
+        title_style="",
+        min_width=90,
+    )
 
-    tot_inv = 0; tot_pnl = 0
+    table.add_column("Symbol",   style="bold",         footer="TOTAL",      no_wrap=True)
+    table.add_column("Invested",  justify="right",      footer="",           no_wrap=True)
+    table.add_column("Lots",      justify="center",     footer="",           no_wrap=True)
+    table.add_column("Avg ₹",     justify="right",      footer="",           no_wrap=True)
+    table.add_column("Cur ₹",     justify="right",      footer="",           no_wrap=True)
+    table.add_column("P&L%",      justify="right",      footer="",           no_wrap=True)
+    table.add_column("To exit",   justify="right",      footer="",           no_wrap=True)
+    table.add_column("P&L ₹",     justify="right",      footer="",           no_wrap=True)
+    table.add_column("Signal",    justify="center",     footer="",           no_wrap=True)
+
+    tot_inv = 0.0
+    tot_pnl = 0.0
+
     for sym, pos in sorted(portfolio.items()):
-        cur    = mkt.get(sym, {}).get("price", 0)
-        pnl    = pos.unrealised_pnl(cur) if cur else 0
-        pp     = pos.pnl_pct(cur) if cur else 0
+        cur    = mkt.get(sym, {}).get("price", 0.0)
+        pnl    = pos.unrealised_pnl(cur) if cur else 0.0
+        pp     = pos.pnl_pct(cur)        if cur else 0.0
         target = pos.avg_price * (1 + cfg.profit_target)
-        to_tgt = (cur / target - 1) * 100 if cur and target else 0
-        icon   = "▲" if pnl >= 0 else "▼"
-        alert  = " ← EXIT?" if (cur and pos.exit_triggered(cur, cfg.profit_target)) else \
-                 " ← AVG?" if (cur and pos.avg_triggered(cur, cfg.avg_trigger)
-                                and pos.can_average(cfg.avg_amount, cfg.max_per_stock)) else ""
-        print(f"  {sym:<13} ₹{pos.total_invested:>8,.0f} {pos.n_lots:>5}"
-              f" ₹{pos.avg_price:>8.2f} ₹{cur:>8.2f}"
-              f" {pp:>+6.1f}% {to_tgt:>+8.1f}%"
-              f" {icon}₹{abs(pnl):>7,.0f}{alert}")
+        to_tgt = (cur / target - 1) * 100 if (cur and target) else 0.0
         tot_inv += pos.total_invested
         tot_pnl += pnl
 
-    idle = cfg.total_capital - tot_inv
-    icon = "▲" if tot_pnl >= 0 else "▼"
-    print(f"  {'─'*12} {'─'*10}")
-    print(f"  {'TOTAL':<13} ₹{tot_inv:>8,.0f}{'':>5}{'':>10}{'':>10}"
-          f"{'':>8}{'':>10} {icon}₹{abs(tot_pnl):>7,.0f}")
-    print(f"\n  Deployed : ₹{tot_inv:,.0f}  │  "
-          f"Idle : ₹{idle:,.0f}  │  "
-          f"Slots free : {cfg.max_positions - len(portfolio)}")
-    print(f"  ⚠  Park idle ₹{idle:,.0f} in liquid fund → HDFC/SBI Liquid (~6.5% p.a.)\n")
+        is_exit = cur and pos.exit_triggered(cur, cfg.profit_target)
+        is_avg  = (cur and pos.avg_triggered(cur, cfg.avg_trigger)
+                   and pos.can_average(cfg.avg_amount, cfg.max_per_stock))
 
-    # Zerodha alert reminder
-    print("  ZERODHA PRICE ALERTS — set for each position (7.5% above avg):")
+        # signal badge
+        if is_exit:
+            signal = Text("● SELL", style="bold red")
+        elif is_avg:
+            signal = Text("● AVG", style="bold yellow")
+        else:
+            signal = Text("○ hold", style="dim green")
+
+        # colour rules
+        pnl_style  = "green" if pnl >= 0   else "red"
+        pp_style   = "green" if pp  >= 0   else "red"
+        tgt_style  = "green" if to_tgt > 0 else "dim red"
+        cur_style  = "cyan"  if cur > 0    else "dim"
+        pnl_arrow  = "▲" if pnl >= 0 else "▼"
+
+        table.add_row(
+            sym,
+            f"₹{pos.total_invested:,.0f}",
+            str(pos.n_lots),
+            f"₹{pos.avg_price:,.2f}",
+            Text(f"₹{cur:,.2f}", style=cur_style),
+            Text(f"{pp:+.1f}%",  style=pp_style),
+            Text(f"{to_tgt:+.1f}%", style=tgt_style),
+            Text(f"{pnl_arrow}₹{abs(pnl):,.0f}", style=pnl_style),
+            signal,
+        )
+
+    # footer totals
+    pnl_footer_style = "green" if tot_pnl >= 0 else "red"
+    pnl_arrow = "▲" if tot_pnl >= 0 else "▼"
+    table.columns[1].footer = Text(f"₹{tot_inv:,.0f}", style="bold")
+    table.columns[7].footer = Text(f"{pnl_arrow}₹{abs(tot_pnl):,.0f}", style=f"bold {pnl_footer_style}")
+
+    console.print(table)
+
+    # summary row
+    idle  = cfg.total_capital - tot_inv
+    slots = cfg.max_positions - len(portfolio)
+    pnl_pct_total = (tot_pnl / tot_inv * 100) if tot_inv else 0.0
+    pnl_style = "green" if tot_pnl >= 0 else "red"
+
+    console.print(
+        f"  [bold]Deployed[/bold] ₹{tot_inv:,.0f}"
+        f"  │  [bold]Idle[/bold] ₹{idle:,.0f}"
+        f"  │  [bold]Slots free[/bold] {slots}/{cfg.max_positions}"
+        f"  │  [bold]Total P&L[/bold] [{pnl_style}]{'+' if tot_pnl>=0 else ''}{pnl_pct_total:.1f}%[/{pnl_style}]"
+    )
+    if idle > 0:
+        console.print(f"  [yellow]⚠  Park ₹{idle:,.0f} idle cash → HDFC/SBI Liquid Fund (~6.5% p.a.)[/yellow]")
+
+    # Zerodha alerts
+    console.print()
+    console.print("  [bold]Zerodha price alerts[/bold] (7.5% above avg cost — trigger to review exit):")
     for sym, pos in sorted(portfolio.items()):
         alert_px = pos.avg_price * 1.075
-        print(f"    {sym:<13} alert @ ₹{alert_px:.2f}  (avg ₹{pos.avg_price:.2f} × 1.075)")
-    print()
+        console.print(f"    [cyan]{sym:<13}[/cyan]  alert @ [bold]₹{alert_px:,.2f}[/bold]  "
+                      f"[dim](avg ₹{pos.avg_price:,.2f} × 1.075)[/dim]")
+    console.print()
 
 
 def print_history() -> None:
@@ -591,9 +697,12 @@ def main():
         print_history(); return
 
     if a.status:
-        log = load_log()
-        mkt = fetch_prices()
-        _print_portfolio(build_portfolio(log), mkt, cfg); return
+        log       = load_log()
+        portfolio = build_portfolio(log)
+        mkt       = fetch_prices()
+        mkt.pop("__filtered__", None)
+        _inject_portfolio_prices(portfolio, mkt)
+        _print_portfolio(portfolio, mkt, cfg); return
 
     generate_signal(cfg)
 
