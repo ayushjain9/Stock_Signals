@@ -1,0 +1,31 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.Python
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ── Claude Code (keep shared config, drop machine-local) ─────────────────────
+.claude/settings.local.json
+
+# ── Personal trading data — DO NOT publish your positions ────────────────────
+trade_log.csv
+midcap_trade_log.csv
+*_holdings.txt
+current_holdings.txt
+midcap_holdings.txt
+
+# ── Generated / regenerable output ───────────────────────────────────────────
+pit_results.txt
+value_picks.csv
+*.log
+
+# ── OS noise ─────────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+desktop.ini
