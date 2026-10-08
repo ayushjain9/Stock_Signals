@@ -15,6 +15,8 @@ STRATEGY RULES
   Avg entry:      If top 5 all held → average the worst held stock
                   Trigger: current price < last_buy_price × 0.97 (-3%)
                   Cap: total invested per stock ≤ max_per_stock
+                  Never average a stock that is below its 200DMA
+                  (or whose 200DMA can't be determined)
   Exit:           current price ≥ avg_buy_price × 1.08 (+8%)
                   Exits checked first, before any new entries
   Priority:       SELL → AVERAGE → FRESH BUY (in this order)
@@ -316,8 +318,25 @@ def fetch_current_prices(symbols: list[str]) -> dict[str, float]:
     return result
 
 
-def _inject_portfolio_prices(portfolio: dict, mkt: dict) -> None:
-    """Add current prices for holdings not captured by the DMA filter."""
+def _inject_portfolio_prices(portfolio: dict, mkt: dict, filtered: dict) -> None:
+    """
+    Add current prices for holdings not captured by the DMA filter.
+    above200: True = above 200DMA (already in mkt), False = below (from the
+    200DMA filter), None = unknown (left the universe / <200 bars).
+    Averaging is only allowed when above200 is True.
+    """
+    for sym in portfolio:
+        if sym in mkt or sym not in filtered:
+            continue
+        d = filtered[sym]
+        mkt[sym] = {
+            "name":      d["name"],
+            "price":     d["price"],
+            "dma20":     0.0,
+            "deviation": d["deviation"],
+            "dma200":    d["dma200"],
+            "above200":  False,
+        }
     missing = [s for s in portfolio if s not in mkt]
     if not missing:
         return
@@ -354,7 +373,7 @@ def generate_signal(cfg: Config) -> None:
     mkt      = {k: v for k, v in mkt_raw.items() if not k.startswith("__")}
 
     # Ensure portfolio holdings always have a live price (they may be above 20DMA)
-    _inject_portfolio_prices(portfolio, mkt)
+    _inject_portfolio_prices(portfolio, mkt, filtered)
 
     if not mkt:
         print("  ❌ Could not fetch prices. Check internet.")
@@ -405,14 +424,19 @@ def generate_signal(cfg: Config) -> None:
         gap_pct  = (cur / pos.last_buy_price - 1) * 100
         triggered = pos.avg_triggered(cur, cfg.avg_trigger)
         can_avg   = pos.can_average(cfg.avg_amount, cfg.max_per_stock)
-        avg_candidates.append((gap_pct, sym, pos, cur, triggered, can_avg))
+        above200  = mkt[sym].get("above200")
+        avg_candidates.append((gap_pct, sym, pos, cur, triggered, can_avg, above200))
 
-    avg_candidates.sort()   # worst first
+    avg_candidates.sort(key=lambda x: x[0])   # worst first
 
     avg_action: tuple | None = None
-    for gap_pct, sym, pos, cur, triggered, can_avg in avg_candidates:
+    for gap_pct, sym, pos, cur, triggered, can_avg, above200 in avg_candidates:
         new_total = pos.total_invested + cfg.avg_amount
-        if triggered and can_avg:
+        if triggered and above200 is not True:
+            why   = "below 200DMA" if above200 is False else "200DMA unknown"
+            label = f"🚫 NO AVERAGING — {why}"
+            note  = "  → rule: never average a stock below its 200DMA"
+        elif triggered and can_avg:
             label = "✅ AVERAGE"
             note  = (f"  → spend ₹{cfg.avg_amount:,.0f}, "
                      f"total becomes ₹{new_total:,.0f} / ₹{cfg.max_per_stock:,.0f}")
@@ -432,7 +456,7 @@ def generate_signal(cfg: Config) -> None:
         if note:
             print(f"    {note}")
 
-        if triggered and can_avg and not exit_signals and avg_action is None:
+        if triggered and can_avg and above200 is True and not exit_signals and avg_action is None:
             avg_action = (sym, cur)
 
     if not avg_candidates:
@@ -442,8 +466,8 @@ def generate_signal(cfg: Config) -> None:
         print(f"\n  ⚡ ACTION: AVERAGE {sym} @ ~₹{cur:.2f}"
               f"  → buy ₹{cfg.avg_amount:,.0f}"
               f" (~{cfg.avg_amount/cur:.0f} shares)")
-    elif not exit_signals and not any(t for _,_,_,_,t,_ in avg_candidates):
-        print("\n  No averaging triggered.")
+    elif not exit_signals and not avg_action:
+        print("\n  No averaging today.")
 
     # ── STEP 3: NEW ENTRY ─────────────────────────────────────────────────────
     _header("STEP 3 — NEW ENTRY SCAN  (if no exit and no avg today)")
@@ -574,14 +598,17 @@ def _print_portfolio(portfolio: dict[str, Position],
         tot_pnl += pnl
 
         is_exit = cur and pos.exit_triggered(cur, cfg.profit_target)
-        is_avg  = (cur and pos.avg_triggered(cur, cfg.avg_trigger)
-                   and pos.can_average(cfg.avg_amount, cfg.max_per_stock))
+        avg_hit = bool(cur and pos.avg_triggered(cur, cfg.avg_trigger))
+        ok200   = mkt.get(sym, {}).get("above200") is True
+        is_avg  = avg_hit and ok200 and pos.can_average(cfg.avg_amount, cfg.max_per_stock)
 
         # signal badge
         if is_exit:
             signal = Text("● SELL", style="bold red")
         elif is_avg:
             signal = Text("● AVG", style="bold yellow")
+        elif avg_hit and not ok200:
+            signal = Text("⊘ <200DMA", style="dim red")
         else:
             signal = Text("○ hold", style="dim green")
 
@@ -700,8 +727,8 @@ def main():
         log       = load_log()
         portfolio = build_portfolio(log)
         mkt       = fetch_prices()
-        mkt.pop("__filtered__", None)
-        _inject_portfolio_prices(portfolio, mkt)
+        filtered  = mkt.pop("__filtered__", {})
+        _inject_portfolio_prices(portfolio, mkt, filtered)
         _print_portfolio(portfolio, mkt, cfg); return
 
     generate_signal(cfg)

@@ -1,7 +1,7 @@
 """
 WealthOS — Portfolio Dashboard Generator
 ==========================================
-Reads live holdings and trade logs, fetches current prices from Yahoo Finance,
+Reads the NiftyShop / MidcapShop trade logs, fetches current prices from Yahoo Finance,
 computes KPIs, and writes a self-contained dashboard.html.
 
 Usage:
@@ -21,14 +21,10 @@ warnings.filterwarnings("ignore")
 
 BASE = Path(__file__).parent
 
-NIFTY50_PER_POS  = 60_000
-MIDCAP_PER_POS   = 20_000
 SHOP_PROFIT_TGT  = 0.08   # +8% → exit
 SHOP_AVG_TRG     = 0.03   # −3% below last buy → average
 SHOP_MAX_PER_STK = 40_000
 
-NIFTY_HOLDINGS   = BASE / "current_holdings.txt"
-MIDCAP_HOLDINGS  = BASE / "midcap_holdings.txt"
 NIFTY_LOG        = BASE / "trade_log.csv"
 MIDCAP_LOG       = BASE / "midcap_trade_log.csv"
 
@@ -58,25 +54,6 @@ def fmt_date(s: str) -> str:
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
-
-def load_holdings(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    result = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) >= 3:
-            result.append({
-                "symbol":      parts[0].upper(),
-                "entry_price": float(parts[1]),
-                "entry_score": float(parts[2]),
-                "entry_date":  parts[3] if len(parts) >= 4 else "",
-            })
-    return result
-
 
 def load_trade_log(path: Path) -> list[dict]:
     if not path.exists():
@@ -199,6 +176,28 @@ def get_closed_trades(log: list[dict]) -> list[dict]:
 
 # ── Price fetching ────────────────────────────────────────────────────────────
 
+def fetch_above_200dma(symbols_ns: list[str]) -> set[str]:
+    """Symbols (with .NS) whose last close is above their 200-day average.
+    Anything missing or with <200 bars is left out — treated as 'not above'."""
+    import yfinance as yf
+    if not symbols_ns:
+        return set()
+    raw = yf.download(symbols_ns, period="14mo", progress=False, auto_adjust=True, threads=True)
+    if raw.empty:
+        return set()
+    closes = raw["Close"]
+    if not hasattr(closes, "columns"):          # single ticker → Series
+        closes = closes.to_frame(symbols_ns[0])
+    above: set[str] = set()
+    for sym_ns in symbols_ns:
+        if sym_ns not in closes.columns:
+            continue
+        c = closes[sym_ns].dropna()
+        if len(c) >= 200 and float(c.iloc[-1]) > float(c.tail(200).mean()):
+            above.add(sym_ns)
+    return above
+
+
 def fetch_prices(symbols_ns: list[str]) -> dict[str, float]:
     import yfinance as yf
     if not symbols_ns:
@@ -219,44 +218,8 @@ def fetch_prices(symbols_ns: list[str]) -> dict[str, float]:
 
 # ── KPI computation ───────────────────────────────────────────────────────────
 
-def annualized_return(cost: float, value: float, days: int) -> float | None:
-    if cost <= 0 or days < 7:
-        return None
-    return ((value / cost) ** (365 / days) - 1) * 100
-
-
-def build_momentum_rows(holdings: list[dict], prices: dict[str, float],
-                        per_pos: float) -> list[dict]:
-    rows = []
-    for h in holdings:
-        sym      = h["symbol"]
-        ep       = h["entry_price"]
-        qty      = round(per_pos / ep) if ep > 0 else 0
-        deployed = round(qty * ep, 2)
-        cur_px   = prices.get(sym + ".NS", 0.0)
-        cur_val  = round(qty * cur_px, 2) if cur_px > 0 else 0.0
-        pnl      = round(cur_val - deployed, 2)
-        pnl_pct  = round(pnl / deployed * 100, 2) if deployed > 0 else 0.0
-        d        = days_held(h["entry_date"])
-        cagr     = annualized_return(deployed, cur_val, d)
-        rows.append({
-            "symbol":      sym,
-            "entry_date":  fmt_date(h["entry_date"]) if h["entry_date"] else "—",
-            "days_held":   d,
-            "entry_price": ep,
-            "cur_price":   cur_px,
-            "qty":         qty,
-            "deployed":    deployed,
-            "cur_value":   cur_val,
-            "pnl":         pnl,
-            "pnl_pct":     pnl_pct,
-            "cagr":        round(cagr, 1) if cagr is not None else None,
-        })
-    rows.sort(key=lambda r: -r["pnl_pct"])
-    return rows
-
-
-def build_niftyshop_rows(open_pos: list[dict], prices: dict[str, float]) -> list[dict]:
+def build_niftyshop_rows(open_pos: list[dict], prices: dict[str, float],
+                         above200: set[str], avg_amount: float, max_per_stock: float) -> list[dict]:
     rows = []
     for pos in open_pos:
         sym          = pos["symbol"]
@@ -272,10 +235,13 @@ def build_niftyshop_rows(open_pos: list[dict], prices: dict[str, float]) -> list
         exit_prog    = min(100, max(0, (cur_px / exit_target) * 100)) if exit_target > 0 else 0
         exit_trig    = cur_px >= exit_target if cur_px > 0 else False
         avg_trig     = (cur_px <= last_buy * (1 - SHOP_AVG_TRG) if cur_px > 0 else False)
-        can_avg      = pos["total_invested"] + 15_000 <= SHOP_MAX_PER_STK
+        can_avg      = pos["total_invested"] + avg_amount <= max_per_stock
+        ok200        = sym + ".NS" in above200   # rule: never average below 200DMA
 
         if exit_trig:
             signal = "SELL"
+        elif avg_trig and not ok200:
+            signal = "NO AVG <200DMA"
         elif avg_trig and can_avg:
             signal = "AVG"
         elif avg_trig and not can_avg:
@@ -418,7 +384,7 @@ def _hm_colors(pct: float) -> tuple[str, str]:
 def render_heatmap(all_rows: list[dict]) -> str:
     if not all_rows:
         return "<p class='empty'>No open positions.</p>"
-    icons = {"n50": "🔵", "mid": "🟣", "ns50": "🟢", "nsmid": "🟡"}
+    icons = {"ns50": "🟢", "nsmid": "🟡"}
     cells = ""
     for r in sorted(all_rows, key=lambda x: -x["pnl_pct"]):
         bg, fg = _hm_colors(r["pnl_pct"])
@@ -460,6 +426,7 @@ SIGNAL_STYLE = {
     "SELL":   ("bg-sell",   "SELL ↑"),
     "AVG":    ("bg-avg",    "AVG ↓"),
     "AT CAP": ("bg-atcap",  "AT CAP"),
+    "NO AVG <200DMA": ("bg-atcap", "NO AVG · &lt;200DMA"),
     "HOLD":   ("bg-hold",   "HOLD"),
 }
 
@@ -477,38 +444,6 @@ def pnl_cls(v: float) -> str:
 
 
 # ── HTML renderers ────────────────────────────────────────────────────────────
-
-def render_momentum_table(rows: list[dict], per_pos: float) -> str:
-    if not rows:
-        return "<p class='empty'>No holdings found. Create current_holdings.txt to track momentum positions.</p>"
-    tbody = ""
-    for r in rows:
-        cagr_str = f"{r['cagr']:+.1f}%" if r["cagr"] is not None else "—"
-        tbody += f"""
-        <tr>
-          <td><span class="sym">{r['symbol']}</span></td>
-          <td class="muted">{r['entry_date']}</td>
-          <td class="muted">{r['days_held'] or '—'}</td>
-          <td>₹{r['entry_price']:,.2f}</td>
-          <td class="{"pos" if r["cur_price"] >= r["entry_price"] else "neg"}">₹{r['cur_price']:,.2f}</td>
-          <td>{r['qty']}</td>
-          <td>{fmt_inr(r['deployed'])}</td>
-          <td>{fmt_inr(r['cur_value'])}</td>
-          <td class='{pnl_cls(r["pnl"])}'>{fmt_inr(r['pnl'], False)}</td>
-          <td class='{pnl_cls(r["pnl_pct"])} fw'>{r['pnl_pct']:+.1f}%</td>
-          <td class='{pnl_cls(r["cagr"] or 0)}'>{cagr_str}</td>
-        </tr>"""
-    return f"""
-    <div class="table-wrap">
-    <table class='data-table'>
-      <thead><tr>
-        <th>Symbol</th><th>Entry</th><th>Days</th>
-        <th>Entry ₹</th><th>CMP ₹</th><th>Qty</th>
-        <th>Deployed</th><th>Value</th><th>P&amp;L ₹</th><th>P&amp;L%</th><th>CAGR</th>
-      </tr></thead>
-      <tbody>{tbody}</tbody>
-    </table></div>"""
-
 
 def render_niftyshop_open_table(rows: list[dict]) -> str:
     if not rows:
@@ -650,21 +585,19 @@ def generate_html(data: dict) -> str:
     rcolor    = REGIME_COLORS.get(regime["label"], "#6b7280")
     r_confirm = "CONFIRMED" if regime["confirmed"] else f"{regime['days']}d"
 
-    total_deployed = sum(data[k]["deployed"] for k in ("n50_summ","mid_summ","ns50_summ","nsmid_summ"))
-    total_value    = sum(data[k]["cur_value"] for k in ("n50_summ","mid_summ","ns50_summ","nsmid_summ"))
+    total_deployed = sum(data[k]["deployed"] for k in ("ns50_summ","nsmid_summ"))
+    total_value    = sum(data[k]["cur_value"] for k in ("ns50_summ","nsmid_summ"))
     total_unreal   = total_value - total_deployed
     total_realized = data["ns50_kpis"]["total_realized"] + data["nsmid_kpis"]["total_realized"]
     total_pnl      = total_unreal + total_realized
     total_pnl_pct  = total_pnl / total_deployed * 100 if total_deployed > 0 else 0
     port_color     = "#22c55e" if total_pnl >= 0 else "#ef4444"
 
-    alloc_labels = ["N50 Momentum", "Midcap Mom.", "NiftyShop N50", "MidcapShop"]
-    alloc_values = [data[k]["deployed"] for k in ("n50_summ","mid_summ","ns50_summ","nsmid_summ")]
+    alloc_labels = ["NiftyShop N50", "MidcapShop"]
+    alloc_values = [data[k]["deployed"] for k in ("ns50_summ","nsmid_summ")]
 
     # All open rows tagged by strategy for heatmap
     all_open_rows = (
-        [{**r, "strat": "n50"}   for r in data["n50_rows"]]  +
-        [{**r, "strat": "mid"}   for r in data["mid_rows"]]  +
         [{**r, "strat": "ns50"}  for r in data["ns50_rows"]] +
         [{**r, "strat": "nsmid"} for r in data["nsmid_rows"]]
     )
@@ -719,7 +652,7 @@ new Chart(document.getElementById('benchChart'), {{
   }}
 }});"""
     else:
-        alpha_card_html   = "<p class='empty' style='font-size:.78rem'>Add entry dates to holdings files for benchmark comparison.</p>"
+        alpha_card_html   = "<p class='empty' style='font-size:.78rem'>No open positions with entry dates yet.</p>"
         bench_canvas_html = ""
         bench_js          = ""
 
@@ -974,29 +907,9 @@ body {{ background: var(--bg); color: var(--text); font-family: -apple-system,Bl
       {bench_canvas_html}
     </div>
     <div class="chart-card" style="flex:2">
-      <div class="chart-title">Position Heatmap &nbsp;<span style="color:var(--muted);font-size:.7rem">hover for details · 🔵 N50Mom · 🟣 MidMom · 🟢 NSop50 · 🟡 NSmid</span></div>
+      <div class="chart-title">Position Heatmap &nbsp;<span style="color:var(--muted);font-size:.7rem">hover for details · 🟢 NiftyShop · 🟡 MidcapShop</span></div>
       {heatmap_html}
     </div>
-  </div>
-
-  <!-- Nifty 50 Momentum -->
-  <div class="section">
-    <div class="section-title">
-      🔵 Nifty 50 Momentum
-      <span class="section-sub">monthly rebalance · ₹9L sleeve · 15 positions</span>
-    </div>
-    {section_kpis(data["n50_summ"])}
-    {render_momentum_table(data["n50_rows"], NIFTY50_PER_POS)}
-  </div>
-
-  <!-- Midcap 50 Momentum -->
-  <div class="section">
-    <div class="section-title">
-      🟣 Midcap 50 Momentum
-      <span class="section-sub">monthly rebalance · ₹2L sleeve · 10 positions · paper trade phase</span>
-    </div>
-    {section_kpis(data["mid_summ"])}
-    {render_momentum_table(data["mid_rows"], MIDCAP_PER_POS)}
   </div>
 
   <!-- NiftyShop -->
@@ -1037,7 +950,7 @@ new Chart(document.getElementById('allocChart'), {{
     labels: {json.dumps(alloc_labels)},
     datasets: [{{
       data: {json.dumps(alloc_values)},
-      backgroundColor: ['#3b82f6','#8b5cf6','#22c55e','#f59e0b'],
+      backgroundColor: ['#22c55e','#f59e0b'],
       borderWidth: 2, borderColor: '#0a0e1a',
       hoverBorderColor: '#fff',
     }}]
@@ -1067,9 +980,7 @@ def main() -> None:
 
     print(f"\nWealthOS Dashboard  —  {datetime.now().strftime('%d %b %Y  %H:%M')}\n")
 
-    print("  Loading holdings and trade logs...")
-    n50_hold  = load_holdings(NIFTY_HOLDINGS)
-    mid_hold  = load_holdings(MIDCAP_HOLDINGS)
+    print("  Loading trade logs...")
     ns50_log  = load_trade_log(NIFTY_LOG)
     nsmid_log = load_trade_log(MIDCAP_LOG)
 
@@ -1078,22 +989,18 @@ def main() -> None:
     ns50_closed  = get_closed_trades(ns50_log)
     nsmid_closed = get_closed_trades(nsmid_log)
 
-    syms_ns = list({h["symbol"] + ".NS" for h in n50_hold + mid_hold} |
-                   {p["symbol"] + ".NS" for p in ns50_open + nsmid_open})
+    syms_ns = list({p["symbol"] + ".NS" for p in ns50_open + nsmid_open})
 
     print(f"  Fetching live prices for {len(syms_ns)} symbols...")
     prices = fetch_prices(syms_ns)
+    above200 = fetch_above_200dma(syms_ns)
 
     print("  Computing KPIs...")
     regime    = get_regime()
-    n50_rows  = build_momentum_rows(n50_hold, prices, NIFTY50_PER_POS)
-    mid_rows  = build_momentum_rows(mid_hold, prices, MIDCAP_PER_POS)
-    ns50_rows = build_niftyshop_rows(ns50_open,  prices)
-    nsmid_rows= build_niftyshop_rows(nsmid_open, prices)
+    ns50_rows = build_niftyshop_rows(ns50_open,  prices, above200, 15_000, SHOP_MAX_PER_STK)
+    nsmid_rows= build_niftyshop_rows(nsmid_open, prices, above200, 7_500, 20_000)
 
     all_rows = (
-        [{**r, "strat": "n50"}   for r in n50_rows]  +
-        [{**r, "strat": "mid"}   for r in mid_rows]  +
         [{**r, "strat": "ns50"}  for r in ns50_rows] +
         [{**r, "strat": "nsmid"} for r in nsmid_rows]
     )
@@ -1103,11 +1010,8 @@ def main() -> None:
     data = {
         "regime":       regime,
         "bench":        bench,
-        "n50_rows":     n50_rows,    "mid_rows":     mid_rows,
         "ns50_rows":    ns50_rows,   "nsmid_rows":   nsmid_rows,
         "ns50_closed":  ns50_closed, "nsmid_closed": nsmid_closed,
-        "n50_summ":     strategy_summary(n50_rows),
-        "mid_summ":     strategy_summary(mid_rows),
         "ns50_summ":    strategy_summary(ns50_rows),
         "nsmid_summ":   strategy_summary(nsmid_rows),
         "ns50_kpis":    niftyshop_kpis(ns50_closed),
@@ -1119,12 +1023,12 @@ def main() -> None:
     out.write_text(generate_html(data), encoding="utf-8")
     print(f"\n  ✅  Dashboard → {out.resolve()}")
 
-    if a.open:
-        import webbrowser
-        webbrowser.open(out.resolve().as_uri())
-        print("  Opened in browser.")
-    else:
-        print("  Tip: run with --open to auto-launch in browser.\n")
+    # if a.open:
+    #     import webbrowser
+    #     webbrowser.open(out.resolve().as_uri())
+    #     print("  Opened in browser.")
+    # else:
+    #     print("  Tip: run with --open to auto-launch in browser.\n")
 
 
 if __name__ == "__main__":

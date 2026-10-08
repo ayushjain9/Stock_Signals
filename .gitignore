@@ -19,10 +19,11 @@ midcap_trade_log.csv
 *_holdings.txt
 current_holdings.txt
 midcap_holdings.txt
+momentum_nifty.csv
 
 # ── Generated / regenerable output ───────────────────────────────────────────
-pit_results.txt
 value_picks.csv
+dashboard.html
 *.log
 
 # ── OS noise ─────────────────────────────────────────────────────────────────

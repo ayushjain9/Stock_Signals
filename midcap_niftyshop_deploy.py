@@ -19,6 +19,8 @@ STRATEGY RULES (identical to niftyshop_deploy.py)
   Avg entry:      If top 5 all held → average worst held stock
                   Trigger: -3% below last buy price
                   Cap: total invested per stock ≤ max_per_stock
+                  Never average a stock that is below its 200DMA
+                  (or whose 200DMA can't be determined)
   Exit:           current price ≥ avg_buy_price × 1.08 (+8%)
   Priority:       SELL → AVERAGE → FRESH BUY
   Max positions:  5 stocks
@@ -275,6 +277,7 @@ def fetch_prices() -> dict[str, dict]:
             "price":     round(price, 2),
             "dma20":     round(dma20, 2),
             "deviation": round((price - dma20) / dma20 * 100, 2),
+            "above200":  True,
         }
 
     result["__filtered__"] = filtered   # type: ignore[assignment]
@@ -282,6 +285,61 @@ def fetch_prices() -> dict[str, dict]:
 
 
 # ── Signal ────────────────────────────────────────────────────────────────────
+def fetch_current_prices(symbols: list[str]) -> dict[str, float]:
+    """Fetch latest close for any symbols — no DMA filter. Used for portfolio holdings."""
+    import yfinance as yf
+    if not symbols:
+        return {}
+    tickers = [f"{s}.NS" for s in symbols]
+    raw = yf.download(tickers, period="5d", progress=False,
+                      auto_adjust=True, threads=True)
+    if raw.empty:
+        return {}
+    close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw
+    result: dict[str, float] = {}
+    for sym in symbols:
+        col = sym + ".NS"
+        if col in close.columns:
+            s = close[col].dropna()
+            if len(s) > 0:
+                result[sym] = round(float(s.iloc[-1]), 2)
+    return result
+
+
+def _inject_portfolio_prices(portfolio: dict, mkt: dict, filtered: dict) -> None:
+    """
+    Add current prices for holdings not captured by the DMA filter — without this,
+    a held stock below its 200DMA would vanish (no exit check, no P&L).
+    above200: True = above 200DMA (already in mkt), False = below (from the
+    200DMA filter), None = unknown (left the universe / <200 bars).
+    Averaging is only allowed when above200 is True.
+    """
+    for sym in portfolio:
+        if sym in mkt or sym not in filtered:
+            continue
+        d = filtered[sym]
+        mkt[sym] = {
+            "name":      d["name"],
+            "price":     d["price"],
+            "dma20":     0.0,
+            "deviation": d["deviation"],
+            "dma200":    d["dma200"],
+            "above200":  False,
+        }
+    missing = [s for s in portfolio if s not in mkt]
+    if not missing:
+        return
+    live = fetch_current_prices(missing)
+    for sym, price in live.items():
+        mkt[sym] = {
+            "name":      MIDCAP50.get(sym, sym),
+            "price":     price,
+            "dma20":     0.0,
+            "deviation": 0.0,
+            "above200":  None,   # unknown — not fetched
+        }
+
+
 def generate_signal(cfg: Config) -> None:
     today_str = datetime.now().strftime("%Y-%m-%d")
     dow       = datetime.now().strftime("%A")
@@ -303,6 +361,9 @@ def generate_signal(cfg: Config) -> None:
     mkt_raw  = fetch_prices()
     filtered = mkt_raw.pop("__filtered__", {})
     mkt      = {k: v for k, v in mkt_raw.items() if not k.startswith("__")}
+
+    # Ensure portfolio holdings always have a live price (they may be below 200DMA)
+    _inject_portfolio_prices(portfolio, mkt, filtered)
 
     if not mkt:
         print("  ❌ Could not fetch prices. Check internet.")
@@ -348,14 +409,19 @@ def generate_signal(cfg: Config) -> None:
         gap_pct   = (cur / pos.last_buy_price - 1) * 100
         triggered = pos.avg_triggered(cur, cfg.avg_trigger)
         can_avg   = pos.can_average(cfg.avg_amount, cfg.max_per_stock)
-        avg_candidates.append((gap_pct, sym, pos, cur, triggered, can_avg))
+        above200  = mkt[sym].get("above200")
+        avg_candidates.append((gap_pct, sym, pos, cur, triggered, can_avg, above200))
 
-    avg_candidates.sort()
+    avg_candidates.sort(key=lambda x: x[0])   # worst first
     avg_action: tuple | None = None
 
-    for gap_pct, sym, pos, cur, triggered, can_avg in avg_candidates:
+    for gap_pct, sym, pos, cur, triggered, can_avg, above200 in avg_candidates:
         new_total = pos.total_invested + cfg.avg_amount
-        if triggered and can_avg:
+        if triggered and above200 is not True:
+            why   = "below 200DMA" if above200 is False else "200DMA unknown"
+            label = f"🚫 NO AVERAGING — {why}"
+            note  = "  → rule: never average a stock below its 200DMA"
+        elif triggered and can_avg:
             label = "✅ AVERAGE"
             note  = (f"  → spend ₹{cfg.avg_amount:,.0f}, "
                      f"total ₹{new_total:,.0f} / ₹{cfg.max_per_stock:,.0f}")
@@ -374,7 +440,7 @@ def generate_signal(cfg: Config) -> None:
         if note:
             print(f"    {note}")
 
-        if triggered and can_avg and not exit_signals and avg_action is None:
+        if triggered and can_avg and above200 is True and not exit_signals and avg_action is None:
             avg_action = (sym, cur)
 
     if not avg_candidates:
@@ -383,8 +449,8 @@ def generate_signal(cfg: Config) -> None:
         sym, cur = avg_action
         print(f"\n  ⚡ ACTION: AVERAGE {sym} @ ~₹{cur:.2f}"
               f"  → ₹{cfg.avg_amount:,.0f} (~{cfg.avg_amount/cur:.0f} shares)")
-    elif not exit_signals and not any(t for _,_,_,_,t,_ in avg_candidates):
-        print("\n  No averaging triggered.")
+    elif not exit_signals and not avg_action:
+        print("\n  No averaging today.")
 
     # STEP 3: NEW ENTRY
     _header("STEP 3 — NEW ENTRY SCAN  (if no exit and no avg today)")
@@ -479,9 +545,12 @@ def _print_portfolio(portfolio, mkt, cfg):
         target = pos.avg_price * (1 + cfg.profit_target)
         to_tgt = (cur / target - 1) * 100 if cur and target else 0
         icon   = "▲" if pnl >= 0 else "▼"
+        avg_hit = bool(cur and pos.avg_triggered(cur, cfg.avg_trigger))
+        ok200   = mkt.get(sym, {}).get("above200") is True
         alert  = " ← EXIT?" if (cur and pos.exit_triggered(cur, cfg.profit_target)) else \
-                 " ← AVG?" if (cur and pos.avg_triggered(cur, cfg.avg_trigger)
-                                and pos.can_average(cfg.avg_amount, cfg.max_per_stock)) else ""
+                 " ← AVG?" if (avg_hit and ok200
+                                and pos.can_average(cfg.avg_amount, cfg.max_per_stock)) else \
+                 " ⊘ <200DMA, no avg" if (avg_hit and not ok200) else ""
         print(f"  {sym:<13} ₹{pos.total_invested:>8,.0f} {pos.n_lots:>5}"
               f" ₹{pos.avg_price:>8.2f} ₹{cur:>8.2f}"
               f" {pp:>+6.1f}% {to_tgt:>+8.1f}%"
@@ -565,10 +634,13 @@ def main():
         print_history(); return
 
     if a.status:
-        log = load_log()
-        mkt_raw = fetch_prices()
-        mkt = {k: v for k, v in mkt_raw.items() if not k.startswith("__")}
-        _print_portfolio(build_portfolio(log), mkt, cfg); return
+        log       = load_log()
+        portfolio = build_portfolio(log)
+        mkt_raw   = fetch_prices()
+        filtered  = mkt_raw.pop("__filtered__", {})
+        mkt       = {k: v for k, v in mkt_raw.items() if not k.startswith("__")}
+        _inject_portfolio_prices(portfolio, mkt, filtered)
+        _print_portfolio(portfolio, mkt, cfg); return
 
     generate_signal(cfg)
 
