@@ -35,9 +35,9 @@ HOW TO USE
   echo "HDFCBANK 745 100" > current_holdings.txt  # symbol, entry_price, entry_score
 
   # Run every month (Sunday evening, before market opens Monday):
-  python momentum_deploy.py
-  python momentum_deploy.py --sleeve 900000        # ₹9L sleeve
-  python momentum_deploy.py --holdings my_file.txt # custom holdings file
+  python final_deploy.py
+  python final_deploy.py --sleeve 900000        # ₹9L sleeve
+  python final_deploy.py --holdings my_file.txt # custom holdings file
 
 HOLDINGS FILE FORMAT (current_holdings.txt)
   One stock per line: SYMBOL  ENTRY_PRICE  ENTRY_SCORE
@@ -58,42 +58,17 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # parked in momentum/: reach config.py + regime_detector.py
+from regime_detector import print_regime_header
 
 warnings.filterwarnings("ignore")
 
-# ── Confirmed parameters ──────────────────────────────────────────────────────
-
-NIFTY50 = [
-    "RELIANCE","TCS","HDFCBANK","BHARTIARTL","ICICIBANK","INFOSYS","SBIN","HINDUNILVR",
-    "ITC","LT","KOTAKBANK","BAJFINANCE","HCLTECH","AXISBANK","ASIANPAINT","MARUTI",
-    "TITAN","SUNPHARMA","ULTRACEMCO","NTPC","POWERGRID","NESTLEIND","WIPRO","ONGC",
-    "JSWSTEEL","TATAMOTORS","ADANIENT","COALINDIA","INDUSINDBK","BAJAJFINSV",
-    "TATASTEEL","TECHM","HDFCLIFE","DIVISLAB","DRREDDY","CIPLA","GRASIM","APOLLOHOSP",
-    "ADANIPORTS","TRENT","BEL","SHRIRAMFIN","BAJAJ-AUTO","EICHERMOT","M&M",
-    "BRITANNIA","BPCL","HEROMOTOCO","HINDALCO","SBILIFE",
-]
-
-SECTOR_MAP: dict[str, str] = {
-    "HDFCBANK":"BANKING","ICICIBANK":"BANKING","SBIN":"BANKING","AXISBANK":"BANKING",
-    "KOTAKBANK":"BANKING","INDUSINDBK":"BANKING","BAJAJFINSV":"NBFC","BAJFINANCE":"NBFC",
-    "SHRIRAMFIN":"NBFC","HDFCLIFE":"INSURANCE","SBILIFE":"INSURANCE",
-    "TCS":"IT","INFOSYS":"IT","HCLTECH":"IT","WIPRO":"IT","TECHM":"IT",
-    "RELIANCE":"ENERGY","ONGC":"ENERGY","BPCL":"ENERGY",
-    "NTPC":"POWER","POWERGRID":"POWER",
-    "HINDUNILVR":"FMCG","ITC":"FMCG","NESTLEIND":"FMCG","BRITANNIA":"FMCG",
-    "MARUTI":"AUTO","TATAMOTORS":"AUTO","M&M":"AUTO","BAJAJ-AUTO":"AUTO",
-    "EICHERMOT":"AUTO","HEROMOTOCO":"AUTO",
-    "LT":"INFRA","SIEMENS":"INFRA",
-    "BEL":"DEFENCE","HAL":"DEFENCE",
-    "TITAN":"CONSUMER","TRENT":"RETAIL",
-    "ASIANPAINT":"PAINTS",
-    "ULTRACEMCO":"CEMENT","GRASIM":"CEMENT",
-    "JSWSTEEL":"METALS","TATASTEEL":"METALS","HINDALCO":"METALS","COALINDIA":"METALS",
-    "SUNPHARMA":"PHARMA","DRREDDY":"PHARMA","DIVISLAB":"PHARMA","CIPLA":"PHARMA",
-    "APOLLOHOSP":"HEALTHCARE",
-    "ADANIENT":"CONGLOMERATE","ADANIPORTS":"PORTS",
-    "BHARTIARTL":"TELECOM",
-}
+# ── Universe and sector map — imported from config.py (single source of truth) ─
+from config import (
+    NIFTY50_LIST    as NIFTY50,
+    NIFTY50_SECTOR_MAP as SECTOR_MAP,
+)
 
 # Deployment parameters — DO NOT CHANGE without re-running backtest
 TOP_N           = 15
@@ -206,6 +181,7 @@ class Holding:
     symbol:      str
     entry_price: float
     entry_score: float
+    entry_date:  str = ""   # YYYY-MM-DD; empty for legacy holdings without a date
 
 @dataclass
 class StockResult:
@@ -238,24 +214,27 @@ def load_holdings(path: Path) -> dict[str, Holding]:
     if not path.exists():
         return {}
     holdings = {}
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split()
-        if len(parts) >= 3:
+        if len(parts) >= 4:
+            sym, ep, es, ed = parts[0].upper(), float(parts[1]), float(parts[2]), parts[3]
+            holdings[sym] = Holding(sym, ep, es, ed)
+        elif len(parts) >= 3:
             sym, ep, es = parts[0].upper(), float(parts[1]), float(parts[2])
             holdings[sym] = Holding(sym, ep, es)
         elif len(parts) == 1:
-            # Symbol only — no entry price/score recorded yet
             holdings[parts[0].upper()] = Holding(parts[0].upper(), 0.0, 0.0)
     return holdings
 
 def save_holdings(holdings: dict[str, Holding], path: Path) -> None:
-    lines = [f"# WealthOS momentum sleeve — updated {datetime.now().strftime('%Y-%m-%d')}\n"]
-    lines += [f"{h.symbol:15s}  {h.entry_price:>10.2f}  {h.entry_score:>6.1f}\n"
+    lines = [f"# WealthOS momentum sleeve — updated {datetime.now().strftime('%Y-%m-%d')}\n",
+             f"# symbol           entry_price  score  entry_date\n"]
+    lines += [f"{h.symbol:15s}  {h.entry_price:>10.2f}  {h.entry_score:>6.1f}  {h.entry_date or datetime.now().strftime('%Y-%m-%d')}\n"
               for h in sorted(holdings.values(), key=lambda x: x.symbol)]
-    path.write_text("".join(lines))
+    path.write_text("".join(lines), encoding="utf-8")
 
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
@@ -264,7 +243,7 @@ def fetch_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
     import yfinance as yf
     tickers = [s + ".NS" for s in NIFTY50] + ["^NSEI"]
     print(f"  Downloading {len(tickers)} tickers from Yahoo Finance...")
-    raw = yf.download(tickers, period="14mo", progress=False, auto_adjust=True, threads=True)
+    raw = yf.download(tickers, period="18mo", progress=False, auto_adjust=True, threads=True)
     cl = raw["Close"]; hi = raw["High"]; lo = raw["Low"]; vo = raw["Volume"]
     return cl, hi, lo, vo
 
@@ -274,7 +253,6 @@ def fetch_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
 def score_all(cl, hi, lo, vo) -> list[StockResult]:
     bench_s = cl["^NSEI"].dropna()
     bench   = bench_s.values.astype(float)
-    bd      = bench_s.index
     results = []
 
     for sym in NIFTY50:
@@ -337,11 +315,24 @@ def select_holdings(
     Applies sector cap + exit buffer exactly as backtested.
     """
     score_map = {r.symbol: r.score for r in scored}
+    price_map = {r.symbol: r.price for r in scored}
+
+    # Step 0: hard stop-loss gate — applies to ALL current holdings unconditionally.
+    # Must run before top-N selection so a high-scoring but crashed stock
+    # cannot be "saved" by remaining in the top-N list.
+    hard_stopped: set[str] = set()
+    for sym, h in current.items():
+        cur_price = price_map.get(sym, 0)
+        if h.entry_price > 0 and cur_price > 0 and cur_price < h.entry_price * 0.85:
+            hard_stopped.add(sym)
 
     # Step 1: select top_n by score with sector cap
+    # Hard-stopped stocks are excluded even if their score is still high.
     new_holds: set[str] = set()
     sec_cnt: dict[str, int] = {}
     for r in scored:
+        if r.symbol in hard_stopped:
+            continue  # hard stop is unconditional — never re-select
         if r.score < min_sc or not r.liq_ok:
             continue
         sec = r.sector
@@ -353,17 +344,12 @@ def select_holdings(
 
     # Step 2: exit buffer — keep current holdings not in new_holds
     # if their score hasn't dropped 15+ points from entry.
-    # Hard stop-loss: always exit if price fell 15%+ from entry,
-    # regardless of score. Score can lag sudden gap-down events.
     kept_by_buffer: set[str] = set()
     for sym, h in current.items():
         if sym in new_holds:
             continue  # already selected
-
-        # Hard stop-loss — independent of score (catches fraud/gap-down)
-        cur_price = next((r.price for r in scored if r.symbol == sym), 0)
-        if h.entry_price > 0 and cur_price > 0 and cur_price < h.entry_price * 0.85:
-            continue  # force exit — don't add to kept_by_buffer
+        if sym in hard_stopped:
+            continue  # force exit — hard stop supersedes buffer
 
         # Exit buffer — only hold if score hasn't decayed too much
         cur_score = score_map.get(sym, 0)
@@ -380,6 +366,21 @@ def select_holdings(
 
 
 # ── Output ────────────────────────────────────────────────────────────────────
+
+def _sell_reason(sym: str, scored: list[StockResult], current: dict[str, Holding], score_map: dict[str, float]) -> str:
+    """Return the most specific reason a holding is being sold."""
+    h = current.get(sym)
+    if not h:
+        return "Not in top-15"
+    cur_px    = next((r.price for r in scored if r.symbol == sym), 0)
+    cur_score = score_map.get(sym, 0)
+    drop      = h.entry_score - cur_score
+    if h.entry_price > 0 and cur_px > 0 and cur_px < h.entry_price * 0.85:
+        return f"Hard stop-loss (↓{(cur_px/h.entry_price - 1)*100:.1f}%)"
+    if drop >= 15:
+        return f"Score dropped {drop:.0f} pts"
+    return "Not in top-15"
+
 
 def print_report(
     scored:       list[StockResult],
@@ -433,7 +434,7 @@ def print_report(
             h = current.get(sym)
             cur_sc = score_map.get(sym, 0)
             drop = (h.entry_score - cur_sc) if h else 0
-            reason = "Score dropped 15+ pts" if h and drop >= 15 else "Not in top-15"
+            reason = _sell_reason(sym, scored, current, score_map)
             t.add_row(
                 f"[red]{sym}[/red]",
                 f"₹{h.entry_price:.1f}" if h else "—",
@@ -491,7 +492,8 @@ def print_report(
     console.print(f"\n[dim]Config: Nifty50 | Top {TOP_N} | Sector cap {SECTOR_CAP} | "
                   f"Exit buffer {EXIT_BUFFER:.0f} | Min score {MIN_SCORE:.0f} | "
                   f"Rebalance monthly[/dim]")
-    console.print(f"[dim]Validated: Jensen's alpha 8.41% | Sharpe 0.87 | MDD -12.28% (5yr backtest)[/dim]\n")
+    console.print(f"[dim]Validated v6: Jensen's alpha 8.68% OOS | Sharpe 0.79 OOS | "
+                  f"MDD -15.51% OOS (benchmark -15.99%) | Hit ratio 60.7%[/dim]\n")
 
 
 def _print_plain(scored, final_holds, to_buy, to_sell, to_keep, current, score_map, sleeve):
@@ -504,7 +506,10 @@ def _print_plain(scored, final_holds, to_buy, to_sell, to_keep, current, score_m
             r = next((x for x in scored if x.symbol==sym), None)
             if r: print(f"  {sym:12s} score={r.score:.0f}  ₹{r.price:.1f}  {r.dma_signal}")
     if to_sell:
-        print(f"\nSELL ({len(to_sell)}): {', '.join(sorted(to_sell))}")
+        print(f"\nSELL ({len(to_sell)}):")
+        for sym in sorted(to_sell):
+            reason = _sell_reason(sym, scored, current, score_map)
+            print(f"  {sym:12s}  {reason}")
     if to_keep:
         print(f"\nHOLD ({len(to_keep)}): {', '.join(sorted(to_keep))}")
     print(f"\nAll scores:")
@@ -520,7 +525,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="WealthOS momentum screener — monthly rebalancing signal")
     p.add_argument("--sleeve",    type=float, default=SLEEVE_DEFAULT,
                    help="Momentum sleeve size in ₹ (default 900000 = ₹9L)")
-    p.add_argument("--holdings",  type=Path, default=Path("current_holdings.txt"),
+    p.add_argument("--holdings",  type=Path, default=Path(__file__).parent / "current_holdings.txt",
                    help="File with current held positions (symbol entry_price entry_score)")
     p.add_argument("--save",      action="store_true",
                    help="Save updated holdings list after computing rebalance")
@@ -528,7 +533,8 @@ def main() -> None:
                    help="Just print all 50 scores, no rebalancing output")
     a = p.parse_args()
 
-    print(f"\nWealthOS Momentum Screener")
+    print_regime_header()
+    print(f"\nWealthOS Momentum Screener (v6)")
     print(f"  Loading holdings from: {a.holdings}")
     current = load_holdings(a.holdings)
     print(f"  Current positions: {len(current)} stocks: {', '.join(sorted(current.keys())) or '(none)'}")
@@ -557,7 +563,7 @@ def main() -> None:
         for sym in to_buy:
             r = next((x for x in scored if x.symbol == sym), None)
             if r:
-                updated[sym] = Holding(sym, r.price, r.score)
+                updated[sym] = Holding(sym, r.price, r.score, datetime.now().strftime("%Y-%m-%d"))
         save_holdings(updated, a.holdings)
         print(f"Saved updated holdings to {a.holdings}")
 

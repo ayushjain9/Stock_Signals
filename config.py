@@ -13,10 +13,13 @@ Update CLAUDE.md too if sleeve sizes change.
 # ── Nifty 50 universe ─────────────────────────────────────────────────────────
 
 # List form — used by momentum deployers (they iterate and append .NS)
+# Synced to NSE's published constituent list (post Sept-2026 semi-annual review):
+#   https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv
+# NSE reviews in March and September — re-sync this block (LIST, NAMES, SECTOR_MAP) then.
 NIFTY50_LIST: list[str] = [
     "RELIANCE","TCS","HDFCBANK","BHARTIARTL","ICICIBANK","INFY","SBIN","HINDUNILVR",
     "ITC","LT","KOTAKBANK","BAJFINANCE","HCLTECH","AXISBANK","ASIANPAINT","MARUTI",
-    "TITAN","SUNPHARMA","ULTRACEMCO","NTPC","POWERGRID","NESTLEIND","WIPRO","ONGC",
+    "TITAN","SUNPHARMA","ULTRACEMCO","NTPC","POWERGRID","NESTLEIND","BSE","ONGC",
     "JSWSTEEL","TMPV","ADANIENT","COALINDIA","ETERNAL","BAJAJFINSV",
     "TATASTEEL","TECHM","HDFCLIFE","INDIGO","DRREDDY","CIPLA","GRASIM","APOLLOHOSP",
     "ADANIPORTS","TRENT","BEL","SHRIRAMFIN","BAJAJ-AUTO","EICHERMOT","M&M",
@@ -38,16 +41,17 @@ NIFTY50_NAMES: dict[str, str] = {
     "ADANIPORTS":"Adani Ports","BEL":"Bharat Electronics",
     "POWERGRID":"Power Grid Corporation","COALINDIA":"Coal India",
     "NESTLEIND":"Nestle India","APOLLOHOSP":"Apollo Hospitals",
-    "ETERNAL":"Zomato","CIPLA":"Cipla",
+    "ETERNAL":"Eternal (Zomato)","CIPLA":"Cipla",
     "TECHM":"Tech Mahindra","TATACONSUM":"Tata Consumer Products",
-    "JSWSTEEL":"JSW Steel","INDIGO":"Indigo",
+    "JSWSTEEL":"JSW Steel","INDIGO":"InterGlobe Aviation (IndiGo)",
     "ASIANPAINT":"Asian Paints","HINDALCO":"Hindalco Industries",
     "EICHERMOT":"Eicher Motors","SBILIFE":"SBI Life Insurance",
     "JIOFIN":"Jio Financials","DRREDDY":"Dr. Reddy's",
     "BAJAJ-AUTO":"Bajaj Auto","GRASIM":"Grasim Industries",
-    "TATASTEEL":"Tata Steel","WIPRO":"Wipro","TRENT":"Trent",
+    "TATASTEEL":"Tata Steel","BSE":"BSE Ltd","TRENT":"Trent",
     "ADANIENT":"Adani Enterprises","SHRIRAMFIN":"Shriram Finance",
-    "MAXHEALTH":"MAX Health","HDFCLIFE":"HDFCLIFE","TMPV":"Tata Motors",
+    "MAXHEALTH":"MAX Health","HDFCLIFE":"HDFC Life Insurance",
+    "TMPV":"Tata Motors Passenger Vehicles",
 }
 
 # Sector map — used by Nifty 50 momentum deployer for sector cap enforcement
@@ -55,7 +59,7 @@ NIFTY50_SECTOR_MAP: dict[str, str] = {
     "HDFCBANK":"BANKING","ICICIBANK":"BANKING","SBIN":"BANKING","AXISBANK":"BANKING",
     "KOTAKBANK":"BANKING","INDIGO":"Aviation","BAJAJFINSV":"NBFC","BAJFINANCE":"NBFC",
     "SHRIRAMFIN":"NBFC","HDFCLIFE":"INSURANCE","SBILIFE":"INSURANCE",
-    "TCS":"IT","INFY":"IT","HCLTECH":"IT","WIPRO":"IT","TECHM":"IT",
+    "TCS":"IT","INFY":"IT","HCLTECH":"IT","TECHM":"IT","BSE":"FINANCE",
     "RELIANCE":"ENERGY","ONGC":"ENERGY",
     "NTPC":"POWER","POWERGRID":"POWER",
     "HINDUNILVR":"FMCG","ITC":"FMCG","NESTLEIND":"FMCG",
@@ -76,68 +80,70 @@ NIFTY50_SECTOR_MAP: dict[str, str] = {
 # ── Nifty Midcap 50 universe ──────────────────────────────────────────────────
 
 # List form — used by midcap momentum deployer
+# Synced to NSE's published constituent list (post Sept-2026 semi-annual review):
+#   https://nsearchives.nseindia.com/content/indices/ind_niftymidcap50list.csv
+# NSE reviews in March and September — re-sync this block (LIST, NAMES, SECTOR_MAP) then.
 MIDCAP50_LIST: list[str] = [
-    "BSE","BHEL","POLYCAB","LUPIN","INDUSTOWER","MARICO","GMRAIRPORTS","HINDPETRO",
-    "NHPC","DABUR","SRF","PERSISTENT","HAVELLS","POLICYBZR","NMDC","MCX",
-    "FEDERALBNK","SUZLON","AUBANK","IDFCFIRSTB","OBEROIRLTY","MFSL","ABCAPITAL",
-    "BALKRISIND","TATACHEM","CESC","PIIND","ZYDUSLIFE","KAJARIACER","VOLTAS",
-    "SUNDARMFIN","ASTRAL","CONCOR","GLENMARK","GODREJPROP","INDHOTEL","JKCEMENT",
-    "LTTS","MRF","PAGEIND","PHOENIXLTD","PRESTIGE","RAMCOCEM","SYNGENE",
-    "TATACOMM","TORNTPHARM","ABFRL","CHAMBLFERT","CRISIL","METROPOLIS",
+    "APLAPOLLO","AUBANK","ASHOKLEY","AUROPHARMA","BHARATFORG","BHEL","DABUR","DIXON",
+    "NYKAA","FEDERALBNK","FORTIS","GVT&D","GMRAIRPORT","GLENMARK","GODREJPROP","HAVELLS",
+    "HEROMOTOCO","HINDPETRO","ICICIGI","IDFCFIRSTB","INDHOTEL","INDUSTOWER","INDUSINDBK",
+    "NAUKRI","JSWENERGY","LAURUSLABS","LUPIN","MANKIND","MARICO","MFSL","MCX","NHPC",
+    "NMDC","NATIONALUM","OIL","PAYTM","POLICYBZR","PERSISTENT","PHOENIXLTD","PRESTIGE",
+    "RECLTD","SRF","SUZLON","SWIGGY","TIINDIA","UPL","UNITDSPR","VMM","WAAREEENER","YESBANK",
 ]
 
 # Dict form — used by MidcapShop deployer (symbol → display name)
 MIDCAP50_NAMES: dict[str, str] = {
-    "BSE":"BSE Ltd","BHEL":"Bharat Heavy Electricals","POLYCAB":"Polycab India",
-    "LUPIN":"Lupin","INDUSTOWER":"Indus Towers","MARICO":"Marico",
-    "GMRAIRPORTS":"GMR Airports Infrastructure","HINDPETRO":"Hindustan Petroleum",
-    "NHPC":"NHPC","DABUR":"Dabur India","SRF":"SRF Ltd",
-    "PERSISTENT":"Persistent Systems","HAVELLS":"Havells India",
-    "POLICYBZR":"PB Fintech (PolicyBazaar)","NMDC":"NMDC","MCX":"MCX",
-    "FEDERALBNK":"Federal Bank","SUZLON":"Suzlon Energy",
-    "AUBANK":"AU Small Finance Bank","IDFCFIRSTB":"IDFC First Bank",
-    "OBEROIRLTY":"Oberoi Realty","MFSL":"Max Financial Services",
-    "ABCAPITAL":"Aditya Birla Capital","BALKRISIND":"Balkrishna Industries",
-    "TATACHEM":"Tata Chemicals","CESC":"CESC","PIIND":"PI Industries",
-    "ZYDUSLIFE":"Zydus Lifesciences","KAJARIACER":"Kajaria Ceramics",
-    "VOLTAS":"Voltas","SUNDARMFIN":"Sundaram Finance","ASTRAL":"Astral Ltd",
-    "CONCOR":"Container Corporation","GLENMARK":"Glenmark Pharma",
-    "GODREJPROP":"Godrej Properties","INDHOTEL":"Indian Hotels",
-    "JKCEMENT":"JK Cement","LTTS":"L&T Technology Services","MRF":"MRF",
-    "PAGEIND":"Page Industries","PHOENIXLTD":"Phoenix Mills",
-    "PRESTIGE":"Prestige Estates","RAMCOCEM":"Ramco Cements",
-    "SYNGENE":"Syngene International","TATACOMM":"Tata Communications",
-    "TORNTPHARM":"Torrent Pharmaceuticals","ABFRL":"Aditya Birla Fashion",
-    "CHAMBLFERT":"Chambal Fertilisers","CRISIL":"CRISIL",
-    "METROPOLIS":"Metropolis Healthcare",
+    "APLAPOLLO":"APL Apollo Tubes","AUBANK":"AU Small Finance Bank",
+    "ASHOKLEY":"Ashok Leyland","AUROPHARMA":"Aurobindo Pharma",
+    "BHARATFORG":"Bharat Forge","BHEL":"Bharat Heavy Electricals",
+    "DABUR":"Dabur India","DIXON":"Dixon Technologies","NYKAA":"Nykaa (FSN E-Commerce)",
+    "FEDERALBNK":"Federal Bank","FORTIS":"Fortis Healthcare",
+    "GVT&D":"GE Vernova T&D India","GMRAIRPORT":"GMR Airports",
+    "GLENMARK":"Glenmark Pharma","GODREJPROP":"Godrej Properties",
+    "HAVELLS":"Havells India","HEROMOTOCO":"Hero MotoCorp",
+    "HINDPETRO":"Hindustan Petroleum","ICICIGI":"ICICI Lombard",
+    "IDFCFIRSTB":"IDFC First Bank","INDHOTEL":"Indian Hotels",
+    "INDUSTOWER":"Indus Towers","INDUSINDBK":"IndusInd Bank",
+    "NAUKRI":"Info Edge (Naukri)","JSWENERGY":"JSW Energy",
+    "LAURUSLABS":"Laurus Labs","LUPIN":"Lupin","MANKIND":"Mankind Pharma",
+    "MARICO":"Marico","MFSL":"Max Financial Services","MCX":"MCX","NHPC":"NHPC",
+    "NMDC":"NMDC","NATIONALUM":"National Aluminium (NALCO)","OIL":"Oil India",
+    "PAYTM":"Paytm (One 97 Communications)","POLICYBZR":"PB Fintech (PolicyBazaar)",
+    "PERSISTENT":"Persistent Systems","PHOENIXLTD":"Phoenix Mills",
+    "PRESTIGE":"Prestige Estates","RECLTD":"REC Ltd","SRF":"SRF Ltd",
+    "SUZLON":"Suzlon Energy","SWIGGY":"Swiggy","TIINDIA":"Tube Investments of India",
+    "UPL":"UPL Ltd","UNITDSPR":"United Spirits","VMM":"Vishal Mega Mart",
+    "WAAREEENER":"Waaree Energies","YESBANK":"Yes Bank",
 }
 
 # Sector map — used by Midcap 50 momentum deployer for sector cap enforcement
 MIDCAP50_SECTOR_MAP: dict[str, str] = {
     "FEDERALBNK":"BANKING","AUBANK":"BANKING","IDFCFIRSTB":"BANKING",
-    "BSE":"FINANCE","MCX":"FINANCE","CRISIL":"FINANCE","SUNDARMFIN":"NBFC",
-    "ABCAPITAL":"NBFC","MFSL":"INSURANCE","POLICYBZR":"FINTECH",
-    "PERSISTENT":"IT","LTTS":"IT",
-    "LUPIN":"PHARMA","ZYDUSLIFE":"PHARMA","GLENMARK":"PHARMA",
-    "TORNTPHARM":"PHARMA","SYNGENE":"PHARMA","METROPOLIS":"HEALTHCARE",
-    "MARICO":"FMCG","DABUR":"FMCG",
-    "MRF":"AUTO_ANCIL","BALKRISIND":"AUTO_ANCIL",
-    "BHEL":"CAPITAL_GOODS","POLYCAB":"CAPITAL_GOODS",
-    "HAVELLS":"CONSUMER_ELEC","VOLTAS":"CONSUMER_ELEC","ASTRAL":"CONSUMER",
-    "NHPC":"POWER","SUZLON":"POWER","CESC":"POWER","HINDPETRO":"ENERGY",
-    "SRF":"CHEMICALS","TATACHEM":"CHEMICALS","PIIND":"CHEMICALS","CHAMBLFERT":"CHEMICALS",
-    "NMDC":"METALS",
-    "GMRAIRPORTS":"INFRA","CONCOR":"LOGISTICS",
-    "INDUSTOWER":"TELECOM","TATACOMM":"TELECOM",
-    "OBEROIRLTY":"REALTY","GODREJPROP":"REALTY","PHOENIXLTD":"REALTY","PRESTIGE":"REALTY",
-    "PAGEIND":"CONSUMER","KAJARIACER":"CONSUMER","ABFRL":"RETAIL",
-    "JKCEMENT":"CEMENT","RAMCOCEM":"CEMENT",
+    "INDUSINDBK":"BANKING","YESBANK":"BANKING",
+    "MCX":"FINANCE","RECLTD":"NBFC","MFSL":"INSURANCE","ICICIGI":"INSURANCE",
+    "POLICYBZR":"FINTECH","PAYTM":"FINTECH",
+    "PERSISTENT":"IT",
+    "LUPIN":"PHARMA","GLENMARK":"PHARMA","AUROPHARMA":"PHARMA",
+    "LAURUSLABS":"PHARMA","MANKIND":"PHARMA","FORTIS":"HEALTHCARE",
+    "MARICO":"FMCG","DABUR":"FMCG","UNITDSPR":"FMCG",
+    "ASHOKLEY":"AUTO","HEROMOTOCO":"AUTO",
+    "BHARATFORG":"AUTO_ANCIL","TIINDIA":"AUTO_ANCIL",
+    "BHEL":"CAPITAL_GOODS","GVT&D":"CAPITAL_GOODS","WAAREEENER":"CAPITAL_GOODS",
+    "HAVELLS":"CONSUMER_ELEC","DIXON":"CONSUMER_ELEC",
+    "NHPC":"POWER","SUZLON":"POWER","JSWENERGY":"POWER",
+    "HINDPETRO":"ENERGY","OIL":"ENERGY",
+    "SRF":"CHEMICALS","UPL":"CHEMICALS",
+    "NMDC":"METALS","NATIONALUM":"METALS","APLAPOLLO":"METALS",
+    "GMRAIRPORT":"INFRA","INDUSTOWER":"TELECOM",
+    "GODREJPROP":"REALTY","PHOENIXLTD":"REALTY","PRESTIGE":"REALTY",
     "INDHOTEL":"HOSPITALITY",
+    "SWIGGY":"INTERNET","NYKAA":"INTERNET","NAUKRI":"INTERNET","VMM":"RETAIL",
 }
 
 # ── Benchmarks ────────────────────────────────────────────────────────────────
 NIFTY50_BENCHMARK  = "^NSEI"
-MIDCAP50_BENCHMARK = "^NSMIDCP"
+MIDCAP50_BENCHMARK = "^NSEMDCP50"   # Nifty Midcap 50 (NOT ^NSMIDCP — on Yahoo that is Nifty Next 50)
 
 # ── Momentum strategy parameters ──────────────────────────────────────────────
 # DO NOT CHANGE without re-running the full backtest chain.

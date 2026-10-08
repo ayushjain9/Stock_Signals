@@ -19,16 +19,6 @@ All scripts are standalone — run directly with Python. Data is fetched live fr
 
 ---
 
-### Momentum Deploy — Nifty 50 (monthly rebalancing)
-
-```bash
-python nifty50_Momentum_deploy.py                        # run signal, ₹9L sleeve default
-python nifty50_Momentum_deploy.py --sleeve 900000
-python nifty50_Momentum_deploy.py --holdings my_file.txt
-python nifty50_Momentum_deploy.py --scores-only          # print all 50 scores, no actions
-python nifty50_Momentum_deploy.py --save                 # write updated holdings after run
-```
-
 ### NiftyShop Deploy — Nifty 50 (weekly mean-reversion)
 
 ```bash
@@ -39,14 +29,19 @@ python niftyshop_deploy.py --status                      # portfolio snapshot on
 python niftyshop_deploy.py --history                     # closed P&L
 ```
 
-### Midcap Momentum Deploy — Nifty Midcap 50 (monthly rebalancing)
+### Weekly run (both Shop deployers + dashboard)
 
 ```bash
-python midcap_momentum_deploy.py
-python midcap_momentum_deploy.py --sleeve 200000         # ₹2L sleeve
-python midcap_momentum_deploy.py --holdings my.txt
-python midcap_momentum_deploy.py --save
+python run_all.py              # NiftyShop + MidcapShop, then dashboard.py
+python run_all.py --dry-run
 ```
+
+### Parked: momentum (not deployed, not tested)
+
+`momentum/nifty50_Momentum_deploy.py` and `momentum/midcap_momentum_deploy.py` are parked. They are NOT run by
+`run_all.py` and NOT shown on the dashboard. They still run standalone
+(`python momentum/nifty50_Momentum_deploy.py`) and read their paper holdings from `momentum/`.
+5y point-in-time test (2026-10-08): v6 momentum 6.3% CAGR vs equal-weight Nifty 50 10.5% — it does not earn its complexity.
 
 ### MidcapShop Deploy — Nifty Midcap 50 (weekly mean-reversion)
 
@@ -56,15 +51,6 @@ python midcap_niftyshop_deploy.py --capital 200000
 python midcap_niftyshop_deploy.py --fresh 5000 --avg 7500
 python midcap_niftyshop_deploy.py --status
 python midcap_niftyshop_deploy.py --history
-```
-
-### Screener
-
-```bash
-python momentum_screener_v3.py                           # Nifty 50, institutional-grade
-python momentum_screener_v3.py --symbols HDFCBANK ICICIBANK
-python momentum_screener_v3.py --min-score 60 --output csv
-python momentum_screener_v3.py --liquidity-cr 10
 ```
 
 ### Value Screener (mid & small cap fundamentals)
@@ -77,22 +63,6 @@ python value_screener.py --sector IT
 python value_screener.py --export value_picks.csv
 ```
 
-### Point-in-time backtest (survivorship-corrected validation)
-
-```bash
-python pit_backtest.py                                   # all strategies, 1/2/3y, snapshot vs PIT
-python pit_backtest.py --strategy momentum-n50 --mode pit
-python pit_backtest.py --years 3 --mode both             # prints survivorship-bias delta
-python pit_backtest.py --membership-n50 members.csv      # gold-standard PIT (real NSE constituents)
-python pit_backtest.py --midcap-superset midcap150.txt   # enables true midcap PIT
-```
-
-Imports the **deployed** `score_stock`/`select_holdings` (validates live code, not a copy).
-Reconstructs Nifty 50 membership by ranking the Nifty 100 superset on trailing traded
-value, uses daily NAV, realistic costs, and credits NiftyShop idle cash at 6.5%.
-These are the numbers to trust — see "Validated performance" below. Latest run output
-is saved to `pit_results.txt`.
-
 ---
 
 ## Architecture
@@ -101,44 +71,27 @@ is saved to `pit_results.txt`.
 
 ```
 Stock_Signals/
-├── nifty50_Momentum_deploy.py      ← Nifty 50 momentum, monthly (PRODUCTION)
 ├── niftyshop_deploy.py             ← Nifty 50 mean-reversion, weekly (PRODUCTION)
-├── midcap_momentum_deploy.py       ← Midcap 50 momentum, monthly (PRODUCTION)
 ├── midcap_niftyshop_deploy.py      ← Midcap 50 mean-reversion, weekly (PRODUCTION)
-├── momentum_screener_v3.py         ← Nifty 50 signal screener (standalone)
-├── value_screener.py               ← Quality-value screener, 400+ stocks
-├── pit_backtest.py                  ← Point-in-time (survivorship-corrected) validator
-├── pit_results.txt                  ← Latest pit_backtest.py output
-├── Archive/                        ← Superseded files (do not run)
-│   ├── Momentum Screener.py        ← v1 screener
-│   ├── momentum_screener_v2.py     ← v2 screener
-│   ├── momentum_deploy_v1.py       ← deployer v1
-│   ├── momentum_deploy_v2.py       ← deployer v2
-│   └── momentum_deploy_v3.py       ← deployer v3
-└── Backtest/                       ← R&D / research files
-    ├── backtest_momentum.py
-    ├── backtest_v2.py
-    ├── backtest_v3_final.py
-    ├── backtest_v4_dynamic_sector.py
-    ├── backtest_v5_override.py
-    ├── backtest_v6_signals.py
-    ├── backtest_regime.py           ← abandoned experiment
-    ├── backtest_final_3yr.py
-    ├── backtest_final_3yr_tradelog.py
-    ├── backtest_final_3yr_trades.xlsx
-    ├── niftyshop_universe_backtest.py  ← NiftyShop on 3 universes
-    └── niftyshop_universe_backtest (1).py
+├── config.py                       ← Universes, sector maps, benchmarks (single source of truth)
+├── regime_detector.py              ← Market regime banner (imported by deployers)
+├── run_all.py                      ← Runs both Shop deployers, then dashboard.py
+├── dashboard.py                    ← Writes dashboard.html from the Shop trade logs
+├── value_screener.py               ← Quality-value screener (~148 tickers, not 400+)
+└── momentum/                       ← PARKED momentum deployers + paper holdings (not deployed)
 ```
+
+The `Backtest/` (R&D chain v1→v6, NiftyShop/Nifty 100 universe tests) and `research/`
+(momentum_screener_v3.py) folders were deleted on 2026-10-08; recover them from git
+history if needed (`git log --all -- Backtest/`).
 
 ---
 
-### Four production strategies
+### Production strategies
 
 | File | Strategy | Universe | Frequency | Sleeve |
 |------|----------|----------|-----------|--------|
-| `nifty50_Momentum_deploy.py` | Momentum (trend-following) | Nifty 50 | Monthly | ₹9L |
 | `niftyshop_deploy.py` | Mean-reversion | Nifty 50 | Weekly (Friday 3:15pm) | ₹4L |
-| `midcap_momentum_deploy.py` | Momentum (trend-following) | Nifty Midcap 50 | Monthly | ₹2L |
 | `midcap_niftyshop_deploy.py` | Mean-reversion | Nifty Midcap 50 | Weekly (Friday 3:15pm) | ₹2L |
 
 ---
@@ -159,7 +112,7 @@ Eight signals, score capped at 100 pts:
 | Volume surge | 6 | 5D avg > 1.5–2× 20D avg; validated +0.95pp OOS |
 | Gate | BLOCKED | liquidity below threshold |
 
-Nifty 50 benchmark: `^NSEI`. Midcap 50 benchmark: `^NSMIDCP`. Liquidity gate: ₹5Cr (Nifty 50), ₹2Cr (Midcap 50).
+Nifty 50 benchmark: `^NSEI`. Midcap 50 benchmark: `^NSEMDCP50` (was wrongly `^NSMIDCP` = Nifty Next 50 until 2026-10-08). Liquidity gate: ₹5Cr (Nifty 50), ₹2Cr (Midcap 50).
 
 **Signals tested and rejected in v6:** real ADX (underperformed every config), graduated 52W high (+0.21pp OOS — noise level).
 
@@ -185,9 +138,8 @@ Midcap 50 version:
   Hold top:    10 stocks (smaller universe)
   Sector cap:  Max 3 stocks per sector
   Same exit buffer, hard stop, min score, min history
-  Not walk-forward validated AND not point-in-time validated (no Midcap-150 superset
-  in pit_backtest.py yet) — all midcap numbers are survivorship-biased. Paper trade
-  2 months first; supply a Midcap-150 list for a real PIT run.
+  Not walk-forward validated AND not point-in-time validated — all midcap numbers are survivorship-biased. Paper trade
+  2 months first.
 ```
 
 > NOTE — "hard stop" is checked only on the monthly rebalance, not intraday. A holding
@@ -202,6 +154,9 @@ Quality gate:  Stock must be ABOVE 200DMA (long-term uptrend intact)
 Avg entry:     If top 5 all held → average worst-held stock
                Trigger: current price < last_buy_price × 0.97 (-3%)
                Cap: total invested per stock ≤ max_per_stock
+               NEVER average a stock below its 200DMA (or with unknown 200DMA) — added
+               2026-10-08; the 200DMA gate now protects averaging, not just fresh entry.
+               Applied in both deployers and dashboard.py. Not backtested.
 Exit:          current price ≥ avg_buy_price × 1.08 (+8%)
 Priority:      SELL → AVERAGE → FRESH BUY
 Max positions: 5 stocks simultaneously
@@ -212,7 +167,7 @@ Midcap 50:     ₹5K–6.25K fresh, ₹7.5K–9.375K avg (smaller sizes, higher 
 
 ### NiftyShop performance
 
-**Point-in-time validated (pit_backtest.py, idle cash @6.5%, as of 2026-05-29) — TRUST THESE:**
+**Point-in-time validated (idle cash @6.5%, as of 2026-05-29; pit_backtest.py has since been removed):**
 
 ```
 Nifty 50, 3y PIT:   CAGR  8.6%  |  Jensen alpha +1.6%  |  MDD -4.7%  |  beta 0.26
@@ -234,7 +189,7 @@ With 200DMA filter:     XIRR ~16-18%   ← was "estimated", never measured
 200DMA filter is ACTIVE on both deployers
 ```
 
-### Holdings file format (for momentum deployers)
+### Holdings file format (for the parked momentum deployers)
 
 ```
 # One stock per line: SYMBOL  ENTRY_PRICE  ENTRY_SCORE
@@ -243,7 +198,7 @@ SBIN        285.00    68
 BAJFINANCE  900.00    75
 ```
 
-Files: `current_holdings.txt` (Nifty 50), `midcap_holdings.txt` (Midcap 50).
+Files: `momentum/current_holdings.txt` (Nifty 50), `momentum/midcap_holdings.txt` (Midcap 50). Paper only — no real momentum positions.
 Comments (`#`) and blank lines are ignored. Symbol-only lines are treated as zero-basis entries.
 
 ### Trade log format (for NiftyShop deployers)
@@ -260,36 +215,20 @@ Actions: `BUY_FRESH | BUY_AVG | SELL`.
 
 ---
 
-### Backtester chain (Backtest/ folder — R&D only)
-
-| File | What it adds |
-|------|-------------|
-| `backtest_momentum.py` | Foundation: core score, transaction costs, 5yr walk-forward |
-| `backtest_v2.py` | Sector concentration cap + parameter grid search |
-| `backtest_v3_final.py` | Exit buffer (only exit if score dropped 15+ pts; cuts turnover 474%→330%) |
-| `backtest_v4_dynamic_sector.py` | Dynamic sector cap: shrinks when sector trailing returns go negative |
-| `backtest_v5_override.py` | Score override: stocks ≥70/100 can bypass the dynamic cap (1 slot max) |
-| `backtest_v6_signals.py` | Signal sweep: vol surge (+0.95pp OOS), 6M RS (+2.20pp OOS); best config v6i |
-| `backtest_regime.py` | Abandoned: regime filters didn't improve MDD + alpha simultaneously |
-| `backtest_final_3yr.py` | 3-year focused backtest |
-| `backtest_final_3yr_tradelog.py` | 3-year backtest with trade log output |
-| `niftyshop_universe_backtest.py` | NiftyShop on Nifty 50 / Nifty200 Momentum 30 / Midcap 50 |
-
----
-
 ### Data layer
 
-All files call `yfinance.download()` directly — no database, no caching. Tickers use the `.NS` suffix for NSE-listed stocks. Benchmarks: `^NSEI` (Nifty 50), `^NSMIDCP` (Nifty Midcap 50). A `14mo` look-back is fetched for the momentum deployers. Backtests use `5y`–`6y` periods.
+All files call `yfinance.download()` directly — no database, no caching. Tickers use the `.NS` suffix for NSE-listed stocks. Benchmarks: `^NSEI` (Nifty 50), `^NSEMDCP50` (Nifty Midcap 50). Do NOT use `^NSMIDCP` — on Yahoo that ticker is the Nifty **Next** 50. An `18mo` look-back is fetched for the momentum deployers.
 
 ### Shared constants
 
-`NIFTY50`, `MIDCAP50`, and `SECTOR_MAP` are duplicated across relevant files. If you update the universe or sector mapping, update it in every file that uses it.
+Universes, sector maps and benchmarks live in `config.py` and the four deployers import them.
+Exceptions that still embed their own (stale) lists: `regime_detector.py` (NIFTY50 for breadth), `value_screener.py`.
 
 ---
 
 ### Validated performance (Nifty 50 momentum)
 
-**Point-in-time validated (pit_backtest.py, daily NAV, survivorship-corrected, as of 2026-05-29) — TRUST THESE:**
+**Point-in-time validated (daily NAV, survivorship-corrected, as of 2026-05-29; pit_backtest.py has since been removed):**
 
 | Horizon | CAGR (PIT) | Bench | Jensen α (PIT) | Sharpe | Max DD |
 |---------|-----------:|------:|---------------:|-------:|-------:|
@@ -299,7 +238,7 @@ All files call `yfinance.download()` directly — no database, no caching. Ticke
 
 Three things the old numbers got wrong:
 1. **Drawdown is −20.5%, not −15.51%.** The old figure came from monthly-step NAV that
-   hid intra-month drops; pit_backtest.py uses daily NAV.
+   hid intra-month drops; the PIT test used daily NAV.
 2. **The alpha is real but NOT stationary.** The 3y alpha (+7.2%) rides the oldest third
    of the window; the trailing **2 years delivered ~0% alpha and negative Sharpe.**
 3. Survivorship bias inflated the old alpha by only ~1-1.7pp — so the edge is mostly
@@ -310,4 +249,3 @@ Three things the old numbers got wrong:
 - *v3 baseline:* Jensen's alpha 8.41% (6.74% OOS) · Sharpe 0.87 · MDD −12.28% · Hit 56.7% · Turnover ~330%
 - *v6:* Jensen's alpha 8.68% OOS · Sharpe 0.79 OOS · MDD −15.51% OOS · Hit 60.7% OOS
   — all from `Backtest/` runs on **today's constituents over multiple years** (survivorship bias).
-  Re-run `pit_backtest.py` to refresh the validated table above.

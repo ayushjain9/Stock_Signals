@@ -4,7 +4,7 @@ WealthOS — Midcap Momentum Screener (Production Deployment)
 
 SAME signal stack as momentum_deploy.py (v6 — validated).
 DIFFERENT universe: Nifty Midcap 50 (F&O traded, liquid mid-caps).
-DIFFERENT benchmark: Nifty Midcap 50 index (^NSMIDCP).
+DIFFERENT benchmark: Nifty Midcap 50 index (^NSEMDCP50).
 
 STRATEGY PARAMETERS
   Universe:    Nifty Midcap 50 (F&O traded stocks)
@@ -14,7 +14,7 @@ STRATEGY PARAMETERS
   Rebalance:   Monthly (Sunday evening before Monday open)
   Min score:   40 / 100
   Liquidity:   ₹2Cr+ average daily value (midcaps less liquid)
-  Benchmark:   Nifty Midcap 50 index (^NSMIDCP)
+  Benchmark:   Nifty Midcap 50 index (^NSEMDCP50)
 
 NOTE ON PERFORMANCE
   Midcap momentum is academically stronger than large-cap momentum
@@ -27,7 +27,7 @@ NOTE ON PERFORMANCE
 
 SIGNAL STACK (identical to Nifty 50 version — v6 validated)
   Trend direction (20):  DMA alignment
-  RS 90D vs midcap (25): stock vs ^NSMIDCP over 90 days
+  RS 90D vs midcap (25): stock vs ^NSEMDCP50 over 90 days
   RS 6M (8):             Jegadeesh-Titman 6-month RS
   VAM (20):              volatility-adjusted momentum
   52W proximity (6):     near yearly high
@@ -48,6 +48,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import numpy as np, pandas as pd
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # parked in momentum/: reach config.py + regime_detector.py
 from regime_detector import print_regime_header
 warnings.filterwarnings("ignore")
 
@@ -55,6 +57,7 @@ warnings.filterwarnings("ignore")
 from config import (
     MIDCAP50_LIST      as MIDCAP50,
     MIDCAP50_SECTOR_MAP as SECTOR_MAP,
+    MIDCAP50_BENCHMARK,
 )
 
 # ── Parameters ────────────────────────────────────────────────────────────────
@@ -65,7 +68,7 @@ MIN_SCORE    = 40.0
 LIQUIDITY_CR = 2.0     # ₹2Cr/day — midcaps less liquid than large caps
 SLEEVE_DEF   = 200_000 # ₹2L default — smaller sleeve for midcap
 MIN_HISTORY  = 210
-BENCHMARK    = "^NSMIDCP"  # Nifty Midcap 50 index
+BENCHMARK    = MIDCAP50_BENCHMARK  # Nifty Midcap 50 index (^NSEMDCP50)
 
 
 # ── Signal computation (v6 — identical to Nifty 50 version) ──────────────────
@@ -187,7 +190,7 @@ def load_holdings(path: Path) -> dict[str, Holding]:
     if not path.exists():
         return {}
     holdings = {}
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -207,7 +210,7 @@ def save_holdings(holdings: dict[str, Holding], path: Path) -> None:
              f"# symbol           entry_price  score  entry_date\n"]
     lines += [f"{h.symbol:15s}  {h.entry_price:>10.2f}  {h.entry_score:>6.1f}  {h.entry_date or datetime.now().strftime('%Y-%m-%d')}\n"
               for h in sorted(holdings.values(), key=lambda x: x.symbol)]
-    path.write_text("".join(lines))
+    path.write_text("".join(lines), encoding="utf-8")
 
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
@@ -406,7 +409,7 @@ def main():
     p = argparse.ArgumentParser(
         description="Midcap Momentum — monthly rebalancing signal (Nifty Midcap 50)")
     p.add_argument("--sleeve",   type=float, default=SLEEVE_DEF)
-    p.add_argument("--holdings", type=str,   default="midcap_holdings.txt")
+    p.add_argument("--holdings", type=str,   default=str(Path(__file__).parent / "midcap_holdings.txt"))
     p.add_argument("--save",     action="store_true",
                    help="Save new holdings to file after running")
     a = p.parse_args()
